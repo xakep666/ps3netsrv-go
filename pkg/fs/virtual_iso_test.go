@@ -35,40 +35,47 @@ func TestMakeFullImage(t *testing.T) {
 
 	var bigFileHash []byte
 
-	memFS := afero.NewMemMapFs()
+	tmpDir, err := ioutil.TempDir("", "test_make_full_image")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, os.RemoveAll(tmpDir)) })
 
+	baseFS := afero.NewBasePathFs(afero.NewOsFs(), tmpDir)
+
+	require.NoError(t, baseFS.MkdirAll(isoRoot, os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(memFS, filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
+		afero.WriteFile(baseFS, filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
+	)
+	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir1"), os.ModePerm))
+	require.NoError(t,
+		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
+	)
+	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
+	require.NoError(t,
+		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
 	)
 	require.NoError(t,
-		afero.WriteFile(memFS, filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
-	)
-	require.NoError(t,
-		afero.WriteFile(memFS, filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
-	)
-	require.NoError(t,
-		afero.WriteFile(memFS, filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
+		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
 	)
 
 	var multiSectorFile [3123]byte
-	_, err := io.ReadFull(rand.Reader, multiSectorFile[:])
+	_, err = io.ReadFull(rand.Reader, multiSectorFile[:])
 	require.NoError(t, err)
 
+	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir2"), os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(memFS, filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
+		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
 	)
 
 	if !testing.Short() && testutil.MultiExtentFileSupported {
 		t.Logf("Generate big file to test multiextent file")
-		f, err := memFS.Create(filepath.Join(isoRoot, "dir2", "big.bin"))
+		f, err := baseFS.Create(filepath.Join(isoRoot, "dir2", "big.bin"))
 		require.NoError(t, err)
 
 		hw := sha256.New()
 
 		n, err := io.CopyN(io.MultiWriter(f, hw), rand.Reader, bigFileSize)
-		if assert.NoError(t, err) {
-			require.Equal(t, int64(bigFileSize), n)
-		}
+		require.NoError(t, err)
+		require.Equal(t, int64(bigFileSize), n)
 
 		require.NoError(t, f.Close())
 		bigFileHash = hw.Sum(nil)
@@ -76,7 +83,7 @@ func TestMakeFullImage(t *testing.T) {
 		t.Logf("Generated file hash: %x", bigFileHash)
 	}
 
-	viso, err := fs.NewVirtualISO(memFS, isoRoot, false)
+	viso, err := fs.NewVirtualISO(baseFS, isoRoot, false)
 	require.NoError(t, err)
 
 	isoFile, err := ioutil.TempFile("", "test_gen*.iso")
