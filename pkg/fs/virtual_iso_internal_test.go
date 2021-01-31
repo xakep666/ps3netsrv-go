@@ -15,7 +15,7 @@ func TestVirtualISO(t *testing.T) {
 	afero.WriteFile(fs, "PKG/test.txt", []byte("hello world!!"), os.ModePerm)
 
 	f, err := NewVirtualISO(fs, "PKG", false)
-	t.Log("err", err)
+	require.NoError(t, err)
 
 	out := make(disc, len(f.fsBuf))
 	copy(out, f.fsBuf)
@@ -31,7 +31,6 @@ func TestVirtualISO(t *testing.T) {
 	out = append(out, make([]byte, padSectors.bytes())...)
 
 	ioutil.WriteFile("../../test_gen.iso", out, os.ModePerm)
-	t.Log("ok")
 }
 
 func TestSFO(t *testing.T) {
