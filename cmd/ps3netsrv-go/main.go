@@ -17,6 +17,13 @@ import (
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
+
 type config struct {
 	ListenAddr            string        `help:"Main server listen address." default:":38008"`
 	Debug                 bool          `help:"Enable debug log messages."`
@@ -29,13 +36,22 @@ type config struct {
 	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535"`
 }
 
+type app struct {
+	config
+
+	Version kong.VersionFlag `help:"Show application version info."`
+}
+
 func main() {
-	var cfg config
-	ctx := kong.Parse(&cfg,
+	var app app
+	ctx := kong.Parse(&app,
 		kong.Name("ps3netsrv-go"),
 		kong.Description("Alternative ps3netsrv implementation for installing games over network."),
+		kong.Vars{
+			"version": fmt.Sprintf("%s (commit '%s' at '%s' build by '%s')", version, commit, date, builtBy),
+		},
 	)
-	ctx.FatalIfErrorf(cfg.Run())
+	ctx.FatalIfErrorf(app.Run())
 }
 
 func (cfg *config) logger() (*zap.Logger, error) {
