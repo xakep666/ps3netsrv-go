@@ -706,6 +706,11 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 					fileItem.path, fileItem.rLBA.bytes(), offset)
 			}
 
+			if offset >= fileItem.rLBA.bytes()+fileItem.size.sectors().bytes() {
+				return read, fmt.Errorf("offset (%d) greater than padded file %s location(%d)+size(%d)",
+					offset, fileItem.path, fileItem.rLBA.bytes(), fileItem.size.sectors().bytes())
+			}
+
 			fileOffset := offset - fileItem.rLBA.bytes()
 
 			if fileOffset < fileItem.size {

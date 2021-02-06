@@ -30,7 +30,7 @@ func TestMakeFullImage(t *testing.T) {
 	const (
 		isoRoot     = "iso_root"
 		bigFileSize = 4*1024*1024*1024 + // 4Gb
-			200*1024*1024 // 200Mb
+			200*1024*1024 + 133 // 200Mb + a bit
 	)
 
 	var bigFileHash []byte
@@ -66,7 +66,7 @@ func TestMakeFullImage(t *testing.T) {
 		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
 	)
 
-	if !testing.Short() && testutil.MultiExtentFileSupported {
+	if !testing.Short() {
 		t.Logf("Generate big file to test multiextent file")
 		f, err := baseFS.Create(filepath.Join(isoRoot, "dir2", "big.bin"))
 		require.NoError(t, err)

@@ -168,19 +168,18 @@ firstFileLoop:
 	}
 
 loop:
-	for i := range l[startDir:] {
+	for i := startDir; i < len(l); i++ {
 		startDirFile := 0
 		if i == startDir {
 			startDirFile = startFile + 1
 		}
 
-		files := l[i].files[startDirFile:]
-		for j := range files {
+		for j := startDirFile; j < len(l[i].files); j++ {
 			if toRead <= 0 {
 				break loop
 			}
 
-			file := &files[j]
+			file := &l[i].files[j]
 			ret = append(ret, file)
 			read := file.size.sectors().bytes() // aligned to sector
 			toRead -= read
