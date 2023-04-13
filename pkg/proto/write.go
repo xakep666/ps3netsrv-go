@@ -49,6 +49,37 @@ func (w *Writer) SendReadDirResult(entries []os.FileInfo) error {
 	return nil
 }
 
+func (w *Writer) SendReadDirEntryResult(entry os.FileInfo) error {
+	dirEntryResult := ReadDirEntryResult{}
+
+	if entry == nil {
+		dirEntryResult.FileSize = -1
+	} else {
+		dirEntryResult.FilenameLen = uint16(len(entry.Name()))
+		if entry.IsDir() {
+			dirEntryResult.FileSize = 0
+			dirEntryResult.IsDirectory = true
+		} else {
+			dirEntryResult.FileSize = entry.Size()
+			dirEntryResult.IsDirectory = false
+		}
+	}
+
+	err := w.sendResult(dirEntryResult)
+	if err != nil {
+		return fmt.Errorf("sendResult for %s failed: %w", entry.Name(), err)
+	}
+
+	if dirEntryResult.FilenameLen > 0 {
+		err := w.sendResult([]byte(entry.Name()))
+		if err != nil {
+			return fmt.Errorf("sendResult for %s failed: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
+}
+
 func (w *Writer) SendStatFileResult(entry os.FileInfo) error {
 	modTime := uint64(entry.ModTime().UTC().Unix())
 	result := StatFileResult{

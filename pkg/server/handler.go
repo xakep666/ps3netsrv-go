@@ -15,8 +15,9 @@ import (
 type LenReader = proto.LenReader
 
 type State struct {
-	Cwd    *string
-	ROFile afero.File
+	Cwd       *string
+	CwdHandle afero.File
+	ROFile    afero.File
 }
 
 type Context struct {
@@ -39,12 +40,21 @@ func (s *Context) Close() error {
 		s.ROFile = nil
 	}
 
+	if s.CwdHandle != nil {
+		if err := s.CwdHandle.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("CwdHandle close failed: %w", err))
+		}
+
+		s.CwdHandle = nil
+	}
+
 	return multierr.Combine(errs...)
 }
 
 type Handler interface {
 	HandleOpenDir(ctx *Context, path string) bool
 	HandleReadDir(ctx *Context) []os.FileInfo
+	HandleReadDirEntry(ctx *Context) os.FileInfo
 	HandleStatFile(ctx *Context, path string) (os.FileInfo, error)
 	HandleOpenFile(ctx *Context, path string) error
 	HandleCloseFile(ctx *Context)

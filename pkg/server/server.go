@@ -117,6 +117,8 @@ func (s *Server) handleCommand(opCode proto.OpCode, ctx *Context) error {
 		return s.handleReadFile(ctx)
 	case proto.CmdReadFileCritical:
 		return s.handleReadFileCritical(ctx)
+	case proto.CmdReadDirEntry:
+		return s.handleReadDirEntry(ctx)
 	default:
 		return fmt.Errorf("unknown opCode: %d", opCode)
 	}
@@ -130,6 +132,10 @@ func (s *Server) handleOpenDir(ctx *Context) error {
 	}
 
 	return ctx.wr.SendOpenDirResult(s.Handler.HandleOpenDir(ctx, dirPath))
+}
+
+func (s *Server) handleReadDirEntry(ctx *Context) error {
+	return ctx.wr.SendReadDirEntryResult(s.Handler.HandleReadDirEntry(ctx))
 }
 
 func (s *Server) handleReadDir(ctx *Context) error {
