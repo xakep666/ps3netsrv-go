@@ -24,7 +24,7 @@ To specify custom root directory use `--root` flag.
 To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` flag.
 
 ## Requirements to build
-[Go 1.15+](https://golang.org/dl/)
+[Go 1.20+](https://go.dev/dl/)
 
 ## Building
 ```bash
