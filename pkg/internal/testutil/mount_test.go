@@ -1,7 +1,7 @@
 package testutil_test
 
 import (
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -26,13 +26,13 @@ func TestMountISO(t *testing.T) {
 		require.NoError(t, cleanup())
 	})
 
-	entries, err := ioutil.ReadDir(mountPath)
+	entries, err := os.ReadDir(mountPath)
 	if assert.NoError(t, err) {
 		assert.Len(t, entries, 1)
 		assert.Equal(t, "test.txt", entries[0].Name())
 	}
 
-	content, err := ioutil.ReadFile(filepath.Join(mountPath, "test.txt"))
+	content, err := os.ReadFile(filepath.Join(mountPath, "test.txt"))
 	if assert.NoError(t, err) {
 		assert.Equal(t, "hello world!!", string(content))
 	}

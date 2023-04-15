@@ -3,7 +3,6 @@ package testutil
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"unicode"
@@ -15,7 +14,7 @@ const (
 )
 
 func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
-	tempDir, err := ioutil.TempDir("", "ps3netsrv_iso")
+	tempDir, err := os.MkdirTemp("", "ps3netsrv_iso")
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to make temp dir: %w", err)
 	}

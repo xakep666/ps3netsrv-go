@@ -19,3 +19,6 @@
 .idea
 .DS_Store
 /dist
+test_gen.iso
+/ps3netsrv-go
+
