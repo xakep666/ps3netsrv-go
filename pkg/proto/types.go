@@ -102,6 +102,14 @@ type DirEntry struct {
 	Name        [MaxDirEntryName]byte
 }
 
+// Used by CmdReadDirEntry. Instead of using a fixed-size buffer for Name as in DirEntry,
+// this struct contains FilenameLen so the receiver knows how many bytes to read for the name.
+type ReadDirEntryResult struct {
+	FileSize    int64
+	FilenameLen uint16
+	IsDirectory bool
+}
+
 // StatFileCommand contains data for CmdStatFile.
 type StatFileCommand struct {
 	// FpLen is a length of path to read further. Path is absolute here.
