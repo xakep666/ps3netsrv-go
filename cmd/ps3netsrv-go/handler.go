@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-
 	"path/filepath"
 
 	"github.com/spf13/afero"
@@ -107,7 +106,21 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
 		return []os.FileInfo{}
 	}
 
-	return entries
+	var files []os.FileInfo
+	for _, entry := range entries {
+		if entry.Mode() & os.ModeSymlink != 0 {
+			// Stat to resolve symlink
+			entry, err = h.Fs.Stat(filepath.Join(*ctx.Cwd, entry.Name()))
+			if err != nil {
+				log.Warn("Stat failed", zap.Error(err))
+				// Ignore broken symbolic links
+				continue
+			}
+		}
+		files = append(files, entry)
+	}
+
+	return files
 }
 
 func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo, error) {
