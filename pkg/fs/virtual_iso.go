@@ -3,6 +3,7 @@ package fs
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
-	"go.uber.org/multierr"
 )
 
 const (
@@ -842,7 +842,7 @@ func (viso *VirtualISO) Close() error {
 		}
 	}
 
-	return multierr.Combine(errs...)
+	return errors.Join(errs...)
 }
 
 type virtualISOStat struct {

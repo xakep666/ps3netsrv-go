@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -9,7 +10,6 @@ import (
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 
 	"github.com/spf13/afero"
-	"go.uber.org/multierr"
 )
 
 type LenReader = proto.LenReader
@@ -48,7 +48,7 @@ func (s *Context) Close() error {
 		s.CwdHandle = nil
 	}
 
-	return multierr.Combine(errs...)
+	return errors.Join(errs...)
 }
 
 type Handler interface {

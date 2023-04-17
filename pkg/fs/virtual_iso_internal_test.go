@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -30,7 +29,7 @@ func TestVirtualISO(t *testing.T) {
 
 	out = append(out, make([]byte, padSectors.bytes())...)
 
-	ioutil.WriteFile("../../test_gen.iso", out, os.ModePerm)
+	os.WriteFile("../../test_gen.iso", out, os.ModePerm)
 }
 
 func TestSFO(t *testing.T) {
