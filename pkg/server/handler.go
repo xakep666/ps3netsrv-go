@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,16 +22,23 @@ type State struct {
 }
 
 type Context struct {
+	context.Context
+
 	RemoteAddr net.Addr
 
 	State
 
-	rd proto.Reader
-	wr proto.Writer
+	rd     proto.Reader
+	wr     proto.Writer
+	cancel context.CancelFunc
 }
 
 func (s *Context) Close() error {
 	var errs []error
+
+	if s.cancel != nil {
+		s.cancel()
+	}
 
 	if s.ROFile != nil {
 		if err := s.ROFile.Close(); err != nil {

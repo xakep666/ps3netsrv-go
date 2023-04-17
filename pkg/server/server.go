@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,10 @@ type Server struct {
 	Log          *zap.Logger
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+
+	// ConnContext optionally specifies a function that modifies
+	// the context used for a new connection c.
+	ConnContext func(ctx context.Context, c net.Conn) context.Context
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -36,7 +41,7 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) setConnWriteDeadline(conn net.Conn) error {
-	if s.WriteTimeout == 0 {
+	if s.WriteTimeout <= 0 {
 		return nil
 	}
 
@@ -44,11 +49,19 @@ func (s *Server) setConnWriteDeadline(conn net.Conn) error {
 }
 
 func (s *Server) setConnReadDeadline(conn net.Conn) error {
-	if s.ReadTimeout == 0 {
+	if s.ReadTimeout <= 0 {
 		return nil
 	}
 
 	return conn.SetReadDeadline(time.Now().Add(s.ReadTimeout))
+}
+
+func (s *Server) deriveConnContext(conn net.Conn) context.Context {
+	if s.ConnContext == nil {
+		return context.Background()
+	}
+
+	return s.ConnContext(context.Background(), conn)
 }
 
 func (s *Server) serveConn(conn net.Conn) {
@@ -57,6 +70,8 @@ func (s *Server) serveConn(conn net.Conn) {
 		rd:         proto.Reader{Reader: conn},
 		wr:         proto.Writer{Writer: conn, BufferPool: s.BufferPool},
 	}
+	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
+
 	log := s.Log.With(zap.Stringer("remote", conn.RemoteAddr()))
 	log.Info("Client connected")
 
