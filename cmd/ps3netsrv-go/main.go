@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	_ "net/http/pprof"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/alecthomas/kong"
+	"github.com/mattn/go-isatty"
+	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
-	"go.uber.org/zap"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
@@ -54,41 +59,44 @@ func main() {
 	ctx.FatalIfErrorf(app.Run())
 }
 
-func (cfg *config) logger() (*zap.Logger, error) {
-	var logCfg zap.Config
+func (cfg *config) logger() *zerolog.Logger {
+	var output io.Writer = os.Stdout
+
+	if !cfg.JSONLog {
+		output = zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
+			w.Out = os.Stdout
+			w.NoColor = !isatty.IsTerminal(os.Stdout.Fd())
+		})
+	}
+
+	log := zerolog.New(output).With().Timestamp().Logger()
+
 	if cfg.Debug {
-		logCfg = zap.NewDevelopmentConfig()
-	} else {
-		logCfg = zap.NewProductionConfig()
-		logCfg.Encoding = ""
+		log = log.Level(zerolog.DebugLevel)
 	}
 
-	if cfg.JSONLog {
-		logCfg.Encoding = "json"
-		logCfg.EncoderConfig = zap.NewProductionEncoderConfig()
-	} else {
-		logCfg.Encoding = "console"
-		logCfg.EncoderConfig = zap.NewDevelopmentEncoderConfig()
-	}
-
-	return logCfg.Build()
+	return &log
 }
 
-func (cfg *config) debugServer(log *zap.Logger) {
+func (cfg *config) debugServer(log *zerolog.Logger) {
 	if cfg.DebugServerListenAddr == "" {
 		return
 	}
 
-	log.Info("Debug sever listening...", zap.String("addr", cfg.DebugServerListenAddr))
+	socket, err := net.Listen("tcp", cfg.DebugServerListenAddr)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Debug server start failed")
+	}
 
-	go http.ListenAndServe(cfg.DebugServerListenAddr, nil)
+	log.Info().
+		Str("addr", addrToLog(socket.Addr())).
+		Msg("Debug sever listening...")
+
+	go http.Serve(socket, nil)
 }
 
 func (cfg *config) Run() error {
-	log, err := cfg.logger()
-	if err != nil {
-		return fmt.Errorf("logger setup failed: %w", err)
-	}
+	log := cfg.logger()
 
 	cfg.debugServer(log)
 
@@ -97,7 +105,9 @@ func (cfg *config) Run() error {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
-	log.Info("Listening...", zap.Stringer("addr", socket.Addr()))
+	log.Info().
+		Str("addr", addrToLog(socket.Addr())).
+		Msg("Listening...")
 
 	var bufPool httputil.BufferPool
 	if cfg.BufferSize > 0 {
@@ -105,14 +115,15 @@ func (cfg *config) Run() error {
 	}
 
 	s := server.Server{
-		Log: log,
 		Handler: &Handler{
-			Log: log,
-			Fs:  &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), cfg.Root)},
+			Fs: &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), cfg.Root)},
 		},
 		BufferPool:   bufPool,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			return log.WithContext(ctx)
+		},
 	}
 
 	if err := s.Serve(socket); err != nil {
@@ -120,4 +131,68 @@ func (cfg *config) Run() error {
 	}
 
 	return nil
+}
+
+func addrToLog(addr net.Addr) string {
+	tcpAddr, isTcpAddr := addr.(*net.TCPAddr)
+	if !isTcpAddr {
+		return addr.String()
+	}
+
+	// if bound to all, print first non-localhost ip
+	// ipv6 with zone handled separately
+	isV4Any := tcpAddr.IP.Equal(net.IPv4zero)
+	isV6Any := tcpAddr.IP.Equal(net.IPv6unspecified)
+	if isV4Any || (isV6Any && tcpAddr.Zone == "") {
+		ifaddrs, err := net.InterfaceAddrs()
+		if err != nil {
+			return addr.String()
+		}
+
+		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
+			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
+		}
+	}
+
+	// for zoned addr try to get interface by name
+	if isV6Any && tcpAddr.Zone != "" {
+		iface, err := net.InterfaceByName(tcpAddr.Zone)
+		if err != nil {
+			return addr.String()
+		}
+
+		ifaddrs, err := iface.Addrs()
+		if err != nil {
+			return addr.String()
+		}
+
+		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
+			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
+		}
+	}
+
+	return addr.String()
+}
+
+func firstSuitableIfaddr(ifaddrs []net.Addr, skipV6 bool) string {
+	for _, ifaddr := range ifaddrs {
+		ipNet, isIPNet := ifaddr.(*net.IPNet)
+		if !isIPNet {
+			continue
+		}
+
+		// skip loopback
+		if ipNet.IP.IsLoopback() {
+			continue
+		}
+
+		// skip v6 for v4 bound
+		if skipV6 && len(ipNet.IP) == net.IPv6len {
+			continue
+		}
+
+		return ipNet.IP.String()
+	}
+
+	return ""
 }
