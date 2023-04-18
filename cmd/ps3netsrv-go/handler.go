@@ -8,36 +8,36 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
-	"go.uber.org/zap"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
 type Handler struct {
-	Fs  afero.Fs
-	Log *zap.Logger
+	Fs afero.Fs
 }
 
 func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr), zap.String("path", path))
-	log.Info("Open dir")
+	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
+
+	log.Info().Msg("Open dir")
 
 	handle, err := h.Fs.Open(path)
 	if err != nil {
-		log.Warn("Open failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Open failed")
 		return false
 	}
 
 	info, err := handle.Stat()
 	if err != nil {
-		log.Warn("Stat failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Stat failed")
 		return false
 	}
 
 	if ctx.CwdHandle != nil {
 		if err := ctx.CwdHandle.Close(); err != nil {
-			log.Warn("Close ctx.CwdHandle failed", zap.Error(err))
+			log.Warn().Err(err).Msg("Close ctx.CwdHandle failed")
 		}
 		ctx.CwdHandle = nil
 	}
@@ -50,11 +50,11 @@ func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
 }
 
 func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr))
-	log.Info("Read Dir Entry")
+	log := zerolog.Ctx(ctx)
+	log.Info().Msg("Read Dir Entry")
 
 	if ctx.Cwd == nil || ctx.CwdHandle == nil {
-		log.Warn("No open dir")
+		log.Warn().Msg("No open dir")
 		return nil
 	}
 
@@ -62,10 +62,10 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 		names, err := ctx.CwdHandle.Readdirnames(1)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.Warn("Readdirnames failed", zap.Error(err))
+				log.Warn().Err(err).Msg("Readdirnames failed")
 			}
 			if err := ctx.CwdHandle.Close(); err != nil {
-				log.Warn("Close ctx.CwdHandle failed", zap.Error(err))
+				log.Warn().Err(err).Msg("Close ctx.CwdHandle failed")
 			}
 			ctx.CwdHandle = nil
 			return nil
@@ -78,7 +78,7 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 		// Stat to resolve symlink
 		fileInfo, err := h.Fs.Stat(filepath.Join(*ctx.Cwd, names[0]))
 		if err != nil {
-			log.Warn("Stat failed", zap.Error(err))
+			log.Warn().Err(err).Msg("Stat failed")
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
 			// to file in dir we don't have x on?), or any other error, we just skip it, and try
 			// the next entry returned by Readdirnames().
@@ -90,29 +90,29 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 }
 
 func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr))
+	logc := zerolog.Ctx(ctx)
 
 	if ctx.Cwd == nil {
-		log.Warn("Reading non-opened dir")
+		logc.Warn().Msg("Reading non-opened dir")
 		return []os.FileInfo{}
 	}
 
-	log = log.With(zap.Stringp("path", ctx.Cwd))
-	log.Info("Read dir")
+	log := logc.With().Str("path", *ctx.Cwd).Logger()
+	log.Info().Msg("Read dir")
 
 	entries, err := afero.ReadDir(h.Fs, *ctx.Cwd)
 	if err != nil {
-		log.Warn("Read dir failed", zap.Error(err))
+		log.Info().Msg("Read dir failed")
 		return []os.FileInfo{}
 	}
 
 	var files []os.FileInfo
 	for _, entry := range entries {
-		if entry.Mode() & os.ModeSymlink != 0 {
+		if entry.Mode()&os.ModeSymlink != 0 {
 			// Stat to resolve symlink
 			entry, err = h.Fs.Stat(filepath.Join(*ctx.Cwd, entry.Name()))
 			if err != nil {
-				log.Warn("Stat failed", zap.Error(err))
+				log.Warn().Err(err).Msg("Stat failed")
 				// Ignore broken symbolic links
 				continue
 			}
@@ -124,8 +124,8 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
 }
 
 func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo, error) {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr), zap.String("path", path))
-	log.Info("Stat file")
+	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
+	log.Info().Msg("Stat file")
 
 	info, err := h.Fs.Stat(path)
 	switch {
@@ -134,18 +134,18 @@ func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo,
 	case os.IsNotExist(err):
 		return nil, err
 	default:
-		log.Warn("Stat file failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Stat file failed")
 		return nil, err
 	}
 }
 
 func (h *Handler) HandleOpenFile(ctx *server.Context, path string) error {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr), zap.String("path", path))
-	log.Info("Open R/O file")
+	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
+	log.Info().Msg("Open R/O file")
 
 	if ctx.ROFile != nil {
 		if err := ctx.ROFile.Close(); err != nil {
-			log.Warn("Close already opened R/O file failed", zap.Error(err))
+			log.Warn().Err(err).Msg("Close already opened R/O file failed")
 		}
 
 		ctx.ROFile = nil
@@ -153,7 +153,7 @@ func (h *Handler) HandleOpenFile(ctx *server.Context, path string) error {
 
 	f, err := h.Fs.Open(path)
 	if err != nil {
-		log.Warn("Open r/o file failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Open r/o file failed")
 		return err
 	}
 
@@ -167,25 +167,25 @@ func (h *Handler) HandleCloseFile(ctx *server.Context) {
 		return
 	}
 
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr))
-	log.Debug("Close R/O file")
+	log := zerolog.Ctx(ctx)
+	log.Debug().Msg("Close R/O file")
 
 	if err := ctx.ROFile.Close(); err != nil {
-		log.Warn("Close R/O file failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Close R/O file failed")
 	}
 }
 
 func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint64) server.LenReader {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr), zap.Uint32("limit", limit), zap.Uint64("offset", offset))
-	log.Debug("Read file")
+	log := zerolog.Ctx(ctx).With().Uint32("limit", limit).Uint64("offset", offset).Logger()
+	log.Debug().Msg("Read file")
 
 	if ctx.ROFile == nil {
-		log.Warn("No file opened")
+		log.Warn().Msg("No file opened")
 		return &bytes.Buffer{}
 	}
 
 	if _, err := ctx.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
-		log.Warn("Seek failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Seek failed")
 		return &bytes.Buffer{}
 	}
 
@@ -193,18 +193,20 @@ func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint6
 
 	n, err := buf.ReadFrom(io.LimitReader(ctx.ROFile, int64(limit)))
 	if err != nil {
-		log.Warn("Read failed", zap.Error(err))
+		log.Warn().Err(err).Msg("Read failed")
 		return &bytes.Buffer{}
 	}
 
-	log.Debug("Read file", zap.Int64("read", n))
+	log.Debug().Int64("read", n).Msg("Read file")
 
 	return &buf
 }
 
 func (h *Handler) HandleReadFileCritical(ctx *server.Context, limit uint32, offset uint64) (io.Reader, error) {
-	log := h.Log.With(zap.Stringer("remote", ctx.RemoteAddr), zap.Uint32("limit", limit), zap.Uint64("offset", offset))
-	log.Debug("Read file critical")
+	zerolog.Ctx(ctx).Debug().
+		Uint32("limit", limit).
+		Uint64("offset", offset).
+		Msg("Read file critical")
 
 	if ctx.ROFile == nil {
 		return nil, fmt.Errorf("no file opened")

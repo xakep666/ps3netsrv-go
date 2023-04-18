@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -9,7 +11,6 @@ import (
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 
 	"github.com/spf13/afero"
-	"go.uber.org/multierr"
 )
 
 type LenReader = proto.LenReader
@@ -21,16 +22,23 @@ type State struct {
 }
 
 type Context struct {
+	context.Context
+
 	RemoteAddr net.Addr
 
 	State
 
-	rd proto.Reader
-	wr proto.Writer
+	rd     proto.Reader
+	wr     proto.Writer
+	cancel context.CancelFunc
 }
 
 func (s *Context) Close() error {
 	var errs []error
+
+	if s.cancel != nil {
+		s.cancel()
+	}
 
 	if s.ROFile != nil {
 		if err := s.ROFile.Close(); err != nil {
@@ -48,7 +56,7 @@ func (s *Context) Close() error {
 		s.CwdHandle = nil
 	}
 
-	return multierr.Combine(errs...)
+	return errors.Join(errs...)
 }
 
 type Handler interface {

@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,9 +34,7 @@ func TestMakeFullImage(t *testing.T) {
 
 	var bigFileHash []byte
 
-	tmpDir, err := ioutil.TempDir("", "test_make_full_image")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(tmpDir)) })
+	tmpDir := t.TempDir()
 
 	baseFS := afero.NewBasePathFs(afero.NewOsFs(), tmpDir)
 
@@ -58,7 +55,7 @@ func TestMakeFullImage(t *testing.T) {
 	)
 
 	var multiSectorFile [3123]byte
-	_, err = io.ReadFull(rand.Reader, multiSectorFile[:])
+	_, err := io.ReadFull(rand.Reader, multiSectorFile[:])
 	require.NoError(t, err)
 
 	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir2"), os.ModePerm))
@@ -86,7 +83,7 @@ func TestMakeFullImage(t *testing.T) {
 	viso, err := fs.NewVirtualISO(baseFS, isoRoot, false)
 	require.NoError(t, err)
 
-	isoFile, err := ioutil.TempFile("", "test_gen*.iso")
+	isoFile, err := os.CreateTemp(t.TempDir(), "test_gen*.iso")
 	require.NoError(t, err)
 
 	t.Logf("Created ISO file at %s", isoFile.Name())
@@ -113,35 +110,35 @@ func TestMakeFullImage(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, unmount()) })
 
 	t.Run("test.txt", func(t *testing.T) {
-		content, err := ioutil.ReadFile(filepath.Join(mountPath, "test.txt"))
+		content, err := os.ReadFile(filepath.Join(mountPath, "test.txt"))
 		if assert.NoError(t, err) {
 			assert.Equal(t, "hello world", string(content))
 		}
 	})
 
 	t.Run("dir1/A.TXT", func(t *testing.T) {
-		content, err := ioutil.ReadFile(filepath.Join(mountPath, "dir1", "A.TXT"))
+		content, err := os.ReadFile(filepath.Join(mountPath, "dir1", "A.TXT"))
 		if assert.NoError(t, err) {
 			assert.Equal(t, "a content", string(content))
 		}
 	})
 
 	t.Run("dir1/DIR2/b.txt", func(t *testing.T) {
-		content, err := ioutil.ReadFile(filepath.Join(mountPath, "dir1", "DIR2", "b.txt"))
+		content, err := os.ReadFile(filepath.Join(mountPath, "dir1", "DIR2", "b.txt"))
 		if assert.NoError(t, err) {
 			assert.Equal(t, "b content", string(content))
 		}
 	})
 
 	t.Run("dir1/c.txt", func(t *testing.T) {
-		content, err := ioutil.ReadFile(filepath.Join(mountPath, "dir1", "c.txt"))
+		content, err := os.ReadFile(filepath.Join(mountPath, "dir1", "c.txt"))
 		if assert.NoError(t, err) {
 			assert.Equal(t, "c content", string(content))
 		}
 	})
 
 	t.Run("dir2/multisector.bin", func(t *testing.T) {
-		content, err := ioutil.ReadFile(filepath.Join(mountPath, "dir2", "multisector.bin"))
+		content, err := os.ReadFile(filepath.Join(mountPath, "dir2", "multisector.bin"))
 		if assert.NoError(t, err) {
 			assert.Equal(t, multiSectorFile[:], content)
 		}

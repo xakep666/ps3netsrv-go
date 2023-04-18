@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,17 +10,19 @@ import (
 	"path/filepath"
 	"time"
 
-	"go.uber.org/zap"
-
+	"github.com/rs/zerolog"
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 )
 
 type Server struct {
 	Handler      Handler
 	BufferPool   httputil.BufferPool
-	Log          *zap.Logger
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+
+	// ConnContext optionally specifies a function that modifies
+	// the context used for a new connection c.
+	ConnContext func(ctx context.Context, c net.Conn) context.Context
 }
 
 func (s *Server) Serve(ln net.Listener) error {
@@ -36,7 +39,7 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) setConnWriteDeadline(conn net.Conn) error {
-	if s.WriteTimeout == 0 {
+	if s.WriteTimeout <= 0 {
 		return nil
 	}
 
@@ -44,11 +47,19 @@ func (s *Server) setConnWriteDeadline(conn net.Conn) error {
 }
 
 func (s *Server) setConnReadDeadline(conn net.Conn) error {
-	if s.ReadTimeout == 0 {
+	if s.ReadTimeout <= 0 {
 		return nil
 	}
 
 	return conn.SetReadDeadline(time.Now().Add(s.ReadTimeout))
+}
+
+func (s *Server) deriveConnContext(conn net.Conn) context.Context {
+	if s.ConnContext == nil {
+		return context.Background()
+	}
+
+	return s.ConnContext(context.Background(), conn)
 }
 
 func (s *Server) serveConn(conn net.Conn) {
@@ -57,14 +68,19 @@ func (s *Server) serveConn(conn net.Conn) {
 		rd:         proto.Reader{Reader: conn},
 		wr:         proto.Writer{Writer: conn, BufferPool: s.BufferPool},
 	}
-	log := s.Log.With(zap.Stringer("remote", conn.RemoteAddr()))
-	log.Info("Client connected")
+	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
 
-	defer log.Info("Client disconnected")
+	log := zerolog.Ctx(ctx)
+	log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+		return c.Str("remote", conn.RemoteAddr().String())
+	})
+
+	log.Info().Msg("Client connected")
+	defer log.Info().Msg("Client disconnected")
 
 	defer func() {
 		if err := ctx.Close(); err != nil {
-			log.Warn("State closed with errors", zap.Error(err))
+			log.Warn().Err(err).Msg("State closed with errors")
 		}
 	}()
 
@@ -72,7 +88,7 @@ func (s *Server) serveConn(conn net.Conn) {
 
 	for {
 		if err := s.setConnReadDeadline(conn); err != nil {
-			log.Error("Failed to set read deadline", zap.Error(err))
+			log.Err(err).Msg("Failed to set read deadline")
 			return
 		}
 
@@ -81,23 +97,26 @@ func (s *Server) serveConn(conn net.Conn) {
 		case errors.Is(err, nil):
 			// pass
 		case errors.Is(err, io.EOF):
-			log.Info("Connection closed")
+			log.Info().Msg("Connection closed")
 			return
 		default:
-			log.Error("Read command failed", zap.Error(err))
+			log.Err(err).Msg("Read command failed")
 			return
 		}
 
-		log := log.With(zap.Stringer("op", opCode))
-		log.Debug("Received opcode")
+		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
+			return c.Stringer("op", opCode)
+		})
+
+		log.Debug().Msg("Received opcode")
 
 		if err := s.setConnWriteDeadline(conn); err != nil {
-			log.Error("Failed to set write deadline", zap.Error(err))
+			log.Err(err).Msg("Failed to set write deadline")
 			return
 		}
 
 		if err := s.handleCommand(opCode, ctx); err != nil {
-			log.Warn("Command handler failed", zap.Error(err))
+			log.Err(err).Msg("Command handler failed")
 			return
 		}
 	}
