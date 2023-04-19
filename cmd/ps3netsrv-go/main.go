@@ -16,6 +16,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
+	"golang.org/x/net/netutil"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
@@ -37,6 +38,7 @@ type config struct {
 	Root                  string        `help:"Root directory with games." type:"existingdir" default:"."`
 	ReadTimeout           time.Duration `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
 	WriteTimeout          time.Duration `help:"Timeout for outgoing data. Connection will be closed on expiration." default:"10s"`
+	MaxClients            int           `help:"Limit amount of connected clients. Negative or zero means no limit."`
 	// default value found during debugging
 	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535"`
 }
@@ -124,6 +126,10 @@ func (cfg *config) Run() error {
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			return log.WithContext(ctx)
 		},
+	}
+
+	if cfg.MaxClients > 0 {
+		socket = netutil.LimitListener(socket, cfg.MaxClients)
 	}
 
 	if err := s.Serve(socket); err != nil {
