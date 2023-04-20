@@ -104,19 +104,17 @@ func (s *Server) serveConn(conn net.Conn) {
 			return
 		}
 
-		log.UpdateContext(func(c zerolog.Context) zerolog.Context {
-			return c.Stringer("op", opCode)
-		})
+		oclog := log.With().Stringer("op", opCode).Logger()
 
-		log.Debug().Msg("Received opcode")
+		oclog.Debug().Msg("Received opcode")
 
 		if err := s.setConnWriteDeadline(conn); err != nil {
-			log.Err(err).Msg("Failed to set write deadline")
+			oclog.Err(err).Msg("Failed to set write deadline")
 			return
 		}
 
 		if err := s.handleCommand(opCode, ctx); err != nil {
-			log.Err(err).Msg("Command handler failed")
+			oclog.Err(err).Msg("Command handler failed")
 			return
 		}
 	}

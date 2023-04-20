@@ -13,15 +13,36 @@ Currently this project only support serving simple files or plain game directori
 Copying files from console to server not supported now. But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
 
 ## Running
+Just run
+```bash
+$ ps3netsrv-go
+```
+from your working directory to serve it.
+
+Or specify custom root directory in 1st positional argument:
+```bash
+$ ps3netsrv-go /home/user/games
+```
+
 To get help run:
 
 ```bash
 $ ps3netsrv-go --help
 ```
 
-To specify custom root directory use `--root` flag.
-
 To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` flag.
+
+## Exposing tips
+* Use limits:
+    * by IP address(es) using 2nd positinal argument: `$ ps3netsrv-go /home/games 192.168.0.123`
+    * by number of clients using `--max-clients` flag
+    * idle connection time: `--read-timeout` flag
+    * mitigate againts slow clients: `--write-timeout` flag
+* To expose over NAT (non-public or "grey" IP) you can use:
+    * [ngrok](https://ngrok.com/docs/secure-tunnels/tunnels/tcp-tunnels/) TCP tunnels
+    * [Reverse SSH tunnel](https://jfrog.com/connect/post/reverse-ssh-tunneling-from-start-to-end/) to host with public IP
+    * any other options
+* To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
 [Go 1.20+](https://go.dev/dl/)

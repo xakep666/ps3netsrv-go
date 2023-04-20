@@ -16,9 +16,11 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
+	"golang.org/x/net/netutil"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
@@ -30,13 +32,16 @@ var (
 )
 
 type config struct {
-	ListenAddr            string        `help:"Main server listen address." default:":38008"`
-	Debug                 bool          `help:"Enable debug log messages."`
-	JSONLog               bool          `help:"Output log messages in json format."`
-	DebugServerListenAddr string        `help:"Enables debug server (with pprof) if provided."`
-	Root                  string        `help:"Root directory with games." type:"existingdir" default:"."`
-	ReadTimeout           time.Duration `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
-	WriteTimeout          time.Duration `help:"Timeout for outgoing data. Connection will be closed on expiration." default:"10s"`
+	Root string `help:"Root directory with games." arg:"" type:"existingdir" default:"."`
+
+	ListenAddr            string           `help:"Main server listen address." default:":38008"`
+	Debug                 bool             `help:"Enable debug log messages."`
+	JSONLog               bool             `help:"Output log messages in json format."`
+	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided."`
+	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
+	WriteTimeout          time.Duration    `help:"Timeout for outgoing data. Connection will be closed on expiration." default:"10s"`
+	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit."`
+	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')."`
 	// default value found during debugging
 	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535"`
 }
@@ -55,6 +60,7 @@ func main() {
 		kong.Vars{
 			"version": fmt.Sprintf("%s (commit '%s' at '%s' build by '%s')", version, commit, date, builtBy),
 		},
+		kong.UsageOnError(),
 	)
 	ctx.FatalIfErrorf(app.Run())
 }
@@ -124,6 +130,13 @@ func (cfg *config) Run() error {
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			return log.WithContext(ctx)
 		},
+	}
+
+	if cfg.MaxClients > 0 {
+		socket = netutil.LimitListener(socket, cfg.MaxClients)
+	}
+	if cfg.ClientWhitelist != nil {
+		socket = iprange.FilterListener(socket, cfg.ClientWhitelist, false)
 	}
 
 	if err := s.Serve(socket); err != nil {
