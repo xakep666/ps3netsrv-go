@@ -79,6 +79,8 @@ func (cfg *config) logger() *zerolog.Logger {
 
 	if cfg.Debug {
 		log = log.Level(zerolog.DebugLevel)
+	} else {
+		log = log.Level(zerolog.InfoLevel)
 	}
 
 	return &log
