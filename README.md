@@ -37,7 +37,6 @@ To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` fla
     * by IP address(es) using 2nd positinal argument: `$ ps3netsrv-go /home/games 192.168.0.123`
     * by number of clients using `--max-clients` flag
     * idle connection time: `--read-timeout` flag
-    * mitigate againts slow clients: `--write-timeout` flag
 * To expose over NAT (non-public or "grey" IP) you can use:
     * [ngrok](https://ngrok.com/docs/secure-tunnels/tunnels/tcp-tunnels/) TCP tunnels
     * [Reverse SSH tunnel](https://jfrog.com/connect/post/reverse-ssh-tunneling-from-start-to-end/) to host with public IP

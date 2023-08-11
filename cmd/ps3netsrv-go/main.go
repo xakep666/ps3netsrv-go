@@ -39,7 +39,6 @@ type config struct {
 	JSONLog               bool             `help:"Output log messages in json format."`
 	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided."`
 	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
-	WriteTimeout          time.Duration    `help:"Timeout for outgoing data. Connection will be closed on expiration." default:"10s"`
 	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit."`
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')."`
 	// default value found during debugging
@@ -124,9 +123,8 @@ func (cfg *config) Run() error {
 		Handler: &Handler{
 			Fs: &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), cfg.Root)},
 		},
-		BufferPool:   bufPool,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
+		BufferPool:  bufPool,
+		ReadTimeout: cfg.ReadTimeout,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 			return log.WithContext(ctx)
 		},

@@ -15,10 +15,9 @@ import (
 )
 
 type Server struct {
-	Handler      Handler
-	BufferPool   httputil.BufferPool
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Handler     Handler
+	BufferPool  httputil.BufferPool
+	ReadTimeout time.Duration
 
 	// ConnContext optionally specifies a function that modifies
 	// the context used for a new connection c.
@@ -36,14 +35,6 @@ func (s *Server) Serve(ln net.Listener) error {
 
 		go s.serveConn(conn)
 	}
-}
-
-func (s *Server) setConnWriteDeadline(conn net.Conn) error {
-	if s.WriteTimeout <= 0 {
-		return nil
-	}
-
-	return conn.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
 }
 
 func (s *Server) setConnReadDeadline(conn net.Conn) error {
@@ -107,11 +98,6 @@ func (s *Server) serveConn(conn net.Conn) {
 		oclog := log.With().Stringer("op", opCode).Logger()
 
 		oclog.Debug().Msg("Received opcode")
-
-		if err := s.setConnWriteDeadline(conn); err != nil {
-			oclog.Err(err).Msg("Failed to set write deadline")
-			return
-		}
 
 		if err := s.handleCommand(opCode, ctx); err != nil {
 			oclog.Err(err).Msg("Command handler failed")
