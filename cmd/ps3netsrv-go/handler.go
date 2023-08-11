@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
-	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
 
+	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
@@ -19,25 +20,25 @@ type Handler struct {
 }
 
 func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
-	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
+	log := slog.With(slog.String("path", path))
 
-	log.Info().Msg("Open dir")
+	log.InfoContext(ctx, "Open dir")
 
 	handle, err := h.Fs.Open(path)
 	if err != nil {
-		log.Warn().Err(err).Msg("Open failed")
+		log.WarnContext(ctx, "Open failed", logutil.ErrorAttr(err))
 		return false
 	}
 
 	info, err := handle.Stat()
 	if err != nil {
-		log.Warn().Err(err).Msg("Stat failed")
+		log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 		return false
 	}
 
 	if ctx.CwdHandle != nil {
 		if err := ctx.CwdHandle.Close(); err != nil {
-			log.Warn().Err(err).Msg("Close ctx.CwdHandle failed")
+			log.WarnContext(ctx, "Close ctx.CwdHandle failed", logutil.ErrorAttr(err))
 		}
 		ctx.CwdHandle = nil
 	}
@@ -50,11 +51,12 @@ func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
 }
 
 func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
-	log := zerolog.Ctx(ctx)
-	log.Info().Msg("Read Dir Entry")
+	log := slog.Default()
+
+	log.InfoContext(ctx, "Read Dir Entry")
 
 	if ctx.Cwd == nil || ctx.CwdHandle == nil {
-		log.Warn().Msg("No open dir")
+		log.WarnContext(ctx, "No open dir")
 		return nil
 	}
 
@@ -62,10 +64,10 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 		names, err := ctx.CwdHandle.Readdirnames(1)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.Warn().Err(err).Msg("Readdirnames failed")
+				log.WarnContext(ctx, "Readdirnames failed", logutil.ErrorAttr(err))
 			}
 			if err := ctx.CwdHandle.Close(); err != nil {
-				log.Warn().Err(err).Msg("Close ctx.CwdHandle failed")
+				log.WarnContext(ctx, "Close ctx.CwdHandle failed", logutil.ErrorAttr(err))
 			}
 			ctx.CwdHandle = nil
 			return nil
@@ -78,7 +80,7 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 		// Stat to resolve symlink
 		fileInfo, err := h.Fs.Stat(filepath.Join(*ctx.Cwd, names[0]))
 		if err != nil {
-			log.Warn().Err(err).Msg("Stat failed")
+			log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
 			// to file in dir we don't have x on?), or any other error, we just skip it, and try
 			// the next entry returned by Readdirnames().
@@ -90,19 +92,19 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 }
 
 func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
-	logc := zerolog.Ctx(ctx)
+	log := slog.Default()
 
 	if ctx.Cwd == nil {
-		logc.Warn().Msg("Reading non-opened dir")
+		log.WarnContext(ctx, "Reading non-opened dir")
 		return []os.FileInfo{}
 	}
 
-	log := logc.With().Str("path", *ctx.Cwd).Logger()
-	log.Info().Msg("Read dir")
+	log = log.With(slog.String("path", *ctx.Cwd))
+	log.InfoContext(ctx, "Read dir")
 
 	entries, err := afero.ReadDir(h.Fs, *ctx.Cwd)
 	if err != nil {
-		log.Info().Msg("Read dir failed")
+		log.WarnContext(ctx, "Read dir failed", logutil.ErrorAttr(err))
 		return []os.FileInfo{}
 	}
 
@@ -112,7 +114,7 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
 			// Stat to resolve symlink
 			entry, err = h.Fs.Stat(filepath.Join(*ctx.Cwd, entry.Name()))
 			if err != nil {
-				log.Warn().Err(err).Msg("Stat failed")
+				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
 				continue
 			}
@@ -124,8 +126,8 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
 }
 
 func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo, error) {
-	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
-	log.Info().Msg("Stat file")
+	log := slog.With(slog.String("path", path))
+	log.InfoContext(ctx, "Stat file")
 
 	info, err := h.Fs.Stat(path)
 	switch {
@@ -134,18 +136,18 @@ func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo,
 	case os.IsNotExist(err):
 		return nil, err
 	default:
-		log.Warn().Err(err).Msg("Stat file failed")
+		log.WarnContext(ctx, "Stat file failed", logutil.ErrorAttr(err))
 		return nil, err
 	}
 }
 
 func (h *Handler) HandleOpenFile(ctx *server.Context, path string) error {
-	log := zerolog.Ctx(ctx).With().Str("path", path).Logger()
-	log.Info().Msg("Open R/O file")
+	log := slog.With(slog.String("path", path))
+	log.InfoContext(ctx, "Open R/O file")
 
 	if ctx.ROFile != nil {
 		if err := ctx.ROFile.Close(); err != nil {
-			log.Warn().Err(err).Msg("Close already opened R/O file failed")
+			log.WarnContext(ctx, "Close already opened R/O file failed", logutil.ErrorAttr(err))
 		}
 
 		ctx.ROFile = nil
@@ -153,7 +155,7 @@ func (h *Handler) HandleOpenFile(ctx *server.Context, path string) error {
 
 	f, err := h.Fs.Open(path)
 	if err != nil {
-		log.Warn().Err(err).Msg("Open r/o file failed")
+		log.WarnContext(ctx, "Open r/o file failed", logutil.ErrorAttr(err))
 		return err
 	}
 
@@ -167,25 +169,25 @@ func (h *Handler) HandleCloseFile(ctx *server.Context) {
 		return
 	}
 
-	log := zerolog.Ctx(ctx)
-	log.Debug().Msg("Close R/O file")
+	log := slog.Default()
+	log.DebugContext(ctx, "Close R/O file")
 
 	if err := ctx.ROFile.Close(); err != nil {
-		log.Warn().Err(err).Msg("Close R/O file failed")
+		log.WarnContext(ctx, "Close R/O file failed", logutil.ErrorAttr(err))
 	}
 }
 
 func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint64) server.LenReader {
-	log := zerolog.Ctx(ctx).With().Uint32("limit", limit).Uint64("offset", offset).Logger()
-	log.Debug().Msg("Read file")
+	log := slog.With(slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
+	log.DebugContext(ctx, "Read file")
 
 	if ctx.ROFile == nil {
-		log.Warn().Msg("No file opened")
+		log.WarnContext(ctx, "No file opened")
 		return &bytes.Buffer{}
 	}
 
 	if _, err := ctx.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
-		log.Warn().Err(err).Msg("Seek failed")
+		log.WarnContext(ctx, "Seek failed", logutil.ErrorAttr(err))
 		return &bytes.Buffer{}
 	}
 
@@ -193,20 +195,17 @@ func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint6
 
 	n, err := buf.ReadFrom(io.LimitReader(ctx.ROFile, int64(limit)))
 	if err != nil {
-		log.Warn().Err(err).Msg("Read failed")
+		log.ErrorContext(ctx, "Read failed", logutil.ErrorAttr(err))
 		return &bytes.Buffer{}
 	}
 
-	log.Debug().Int64("read", n).Msg("Read file")
+	log.DebugContext(ctx, "Read file", slog.Int64("read", n))
 
 	return &buf
 }
 
 func (h *Handler) HandleReadFileCritical(ctx *server.Context, limit uint32, offset uint64) (io.Reader, error) {
-	zerolog.Ctx(ctx).Debug().
-		Uint32("limit", limit).
-		Uint64("offset", offset).
-		Msg("Read file critical")
+	slog.DebugContext(ctx, "Read file critical", slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
 
 	if ctx.ROFile == nil {
 		return nil, fmt.Errorf("no file opened")

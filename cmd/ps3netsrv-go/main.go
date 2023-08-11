@@ -1,9 +1,8 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -13,14 +12,16 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/rs/zerolog"
 	"github.com/spf13/afero"
 	"golang.org/x/net/netutil"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
+	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
@@ -64,55 +65,56 @@ func main() {
 	ctx.FatalIfErrorf(app.Run())
 }
 
-func (cfg *config) logger() *zerolog.Logger {
-	var output io.Writer = os.Stdout
+func (cfg *config) setupLogger() {
+	level := slog.LevelInfo
+	if cfg.Debug {
+		level = slog.LevelDebug
+	}
 
-	if !cfg.JSONLog {
-		output = zerolog.NewConsoleWriter(func(w *zerolog.ConsoleWriter) {
-			w.Out = os.Stdout
-			w.NoColor = !isatty.IsTerminal(os.Stdout.Fd())
+	var handler slog.Handler
+	if cfg.JSONLog {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: level,
+		})
+	} else {
+		handler = tint.NewHandler(colorable.NewColorable(os.Stdout), &tint.Options{
+			Level:   level,
+			NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
 		})
 	}
 
-	log := zerolog.New(output).With().Timestamp().Logger()
+	handler = &server.SlogContextHandler{handler}
 
-	if cfg.Debug {
-		log = log.Level(zerolog.DebugLevel)
-	}
-
-	return &log
+	slog.SetDefault(slog.New(handler))
 }
 
-func (cfg *config) debugServer(log *zerolog.Logger) {
+func (cfg *config) debugServer() {
 	if cfg.DebugServerListenAddr == "" {
 		return
 	}
 
 	socket, err := net.Listen("tcp", cfg.DebugServerListenAddr)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Debug server start failed")
+		slog.Error("Debug server start failed", logutil.ErrorAttr(err))
+		os.Exit(1)
 	}
 
-	log.Info().
-		Str("addr", addrToLog(socket.Addr())).
-		Msg("Debug sever listening...")
+	slog.Info("Debug sever listening...", "addr", addrToLog(socket.Addr()))
 
 	go http.Serve(socket, nil)
 }
 
 func (cfg *config) Run() error {
-	log := cfg.logger()
+	cfg.setupLogger()
 
-	cfg.debugServer(log)
+	cfg.debugServer()
 
 	socket, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
-	log.Info().
-		Str("addr", addrToLog(socket.Addr())).
-		Msg("Listening...")
+	slog.Info("Listening...", "addr", addrToLog(socket.Addr()))
 
 	var bufPool httputil.BufferPool
 	if cfg.BufferSize > 0 {
@@ -125,9 +127,6 @@ func (cfg *config) Run() error {
 		},
 		BufferPool:  bufPool,
 		ReadTimeout: cfg.ReadTimeout,
-		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			return log.WithContext(ctx)
-		},
 	}
 
 	if cfg.MaxClients > 0 {
