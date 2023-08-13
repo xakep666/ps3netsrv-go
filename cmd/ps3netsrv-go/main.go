@@ -8,7 +8,6 @@ import (
 	"net/http/httputil"
 	_ "net/http/pprof"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -99,7 +98,7 @@ func (cfg *config) debugServer() {
 		os.Exit(1)
 	}
 
-	slog.Info("Debug sever listening...", "addr", addrToLog(socket.Addr()))
+	slog.Info("Debug sever listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
 	go http.Serve(socket, nil)
 }
@@ -114,7 +113,7 @@ func (cfg *config) Run() error {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
-	slog.Info("Listening...", "addr", addrToLog(socket.Addr()))
+	slog.Info("Listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
 	var bufPool httputil.BufferPool
 	if cfg.BufferSize > 0 {
@@ -141,68 +140,4 @@ func (cfg *config) Run() error {
 	}
 
 	return nil
-}
-
-func addrToLog(addr net.Addr) string {
-	tcpAddr, isTcpAddr := addr.(*net.TCPAddr)
-	if !isTcpAddr {
-		return addr.String()
-	}
-
-	// if bound to all, print first non-localhost ip
-	// ipv6 with zone handled separately
-	isV4Any := tcpAddr.IP.Equal(net.IPv4zero)
-	isV6Any := tcpAddr.IP.Equal(net.IPv6unspecified)
-	if isV4Any || (isV6Any && tcpAddr.Zone == "") {
-		ifaddrs, err := net.InterfaceAddrs()
-		if err != nil {
-			return addr.String()
-		}
-
-		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
-			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
-		}
-	}
-
-	// for zoned addr try to get interface by name
-	if isV6Any && tcpAddr.Zone != "" {
-		iface, err := net.InterfaceByName(tcpAddr.Zone)
-		if err != nil {
-			return addr.String()
-		}
-
-		ifaddrs, err := iface.Addrs()
-		if err != nil {
-			return addr.String()
-		}
-
-		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
-			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
-		}
-	}
-
-	return addr.String()
-}
-
-func firstSuitableIfaddr(ifaddrs []net.Addr, skipV6 bool) string {
-	for _, ifaddr := range ifaddrs {
-		ipNet, isIPNet := ifaddr.(*net.IPNet)
-		if !isIPNet {
-			continue
-		}
-
-		// skip loopback
-		if ipNet.IP.IsLoopback() {
-			continue
-		}
-
-		// skip v6 for v4 bound
-		if skipV6 && len(ipNet.IP) == net.IPv6len {
-			continue
-		}
-
-		return ipNet.IP.String()
-	}
-
-	return ""
 }

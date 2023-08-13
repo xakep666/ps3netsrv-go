@@ -3,13 +3,12 @@ package logutil
 import (
 	"fmt"
 	"log/slog"
+
+	"github.com/lmittmann/tint"
 )
 
 func ErrorAttr(err error) slog.Attr {
-	return slog.Attr{
-		Key:   "error",
-		Value: slog.AnyValue(err),
-	}
+	return tint.Err(err)
 }
 
 func StringerAttr(key string, value fmt.Stringer) slog.Attr {
