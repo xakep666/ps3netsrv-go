@@ -158,3 +158,77 @@ type ReadFileResult struct {
 
 // ReadFileCriticalCommand contains data for CmdReadFileCritical.
 type ReadFileCriticalCommand ReadFileCommand
+
+// CreateFileCommand contains data for CmdCreateFile.
+type CreateFileCommand struct {
+	// FpLen is a length of path to read further.
+	FpLen uint16
+}
+
+// CreateFileResult is a response for CmdCreateFile.
+type CreateFileResult struct {
+	// Result shows if creating file was successful (0) or not (-1).
+	Result int32
+}
+
+// WriteFileCommand contains data for CmdWriteFile.
+type WriteFileCommand struct {
+	_ uint16 // pad
+
+	// BytesToWrite is a number of bytes to write.
+	BytesToWrite uint32
+}
+
+// WriteFileResult is a response for CmdWriteFile.
+type WriteFileResult struct {
+	// BytesWritten contains number of written bytes or -1 on error.
+	BytesWritten int32
+}
+
+// DeleteFileCommand contains data for CmdDeleteFile.
+type DeleteFileCommand struct {
+	// FpLen is a length of path to read further. Path is absolute here.
+	FpLen uint16
+}
+
+// DeleteFileResult is a response for CmdCreateFile.
+type DeleteFileResult struct {
+	// Result shows if creating file was successful (0) or not (-1).
+	Result int32
+}
+
+// MkdirCommand contains data for CmdMkdir.
+type MkdirCommand struct {
+	// DpLen is a length of path to read further. Path is absolute here.
+	DpLen uint16
+}
+
+// MkdirResult is a result of CmdMkdir with file info.
+type MkdirResult struct {
+	// Result shows if creating directory was successful (0) or not (-1).
+	Result int32
+}
+
+// RmdirCommand contains data for CmdRmdir.
+type RmdirCommand struct {
+	// DpLen is a length of path to read further. Path is absolute here.
+	DpLen uint16
+}
+
+// RmdirResult is a result of CmdRmdir with file info.
+type RmdirResult struct {
+	// Result shows if removing directory was successful (0) or not (-1).
+	Result int32
+}
+
+// GetDirSizeCommand contains data for CmdGetDirSize.
+type GetDirSizeCommand struct {
+	// DpLen is a length of path to read further. Path is absolute here.
+	DpLen uint16
+}
+
+// GetDirSizeResult is a result of CmdGetDirSize with file info.
+type GetDirSizeResult struct {
+	// Size contains total directory size or -1 on error.
+	Size int64
+}

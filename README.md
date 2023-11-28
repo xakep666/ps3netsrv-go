@@ -9,8 +9,10 @@ I made it because original code is way hard to read and hard to build for some p
 This project written in Go because it's (cross-)compilation is much easier than C/C++ and resulting binaries
 will run without any external library on target system.
 
-Currently this project only support serving simple files or plain game directories (without encrypted 3k3yredump images and multipart files).
-Copying files from console to server not supported now. But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
+Currently, this project only support serving simple files or plain game directories (without encrypted 3k3yredump images and multipart files).
+But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
+
+Receiving files from console is supported now! Use flag `--allow-write` to enable this.
 
 ## Running
 Just run

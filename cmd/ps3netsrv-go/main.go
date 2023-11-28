@@ -41,6 +41,7 @@ type config struct {
 	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
 	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit."`
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')."`
+	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations."`
 	// default value found during debugging
 	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535"`
 }
@@ -122,7 +123,9 @@ func (cfg *config) Run() error {
 
 	s := server.Server{
 		Handler: &Handler{
-			Fs: &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), cfg.Root)},
+			Fs:         &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), cfg.Root)},
+			AllowWrite: cfg.AllowWrite,
+			BufferPool: bufPool,
 		},
 		BufferPool:  bufPool,
 		ReadTimeout: cfg.ReadTimeout,

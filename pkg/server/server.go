@@ -120,6 +120,18 @@ func (s *Server) handleCommand(opCode proto.OpCode, ctx *Context) error {
 		return s.handleReadFileCritical(ctx)
 	case proto.CmdReadDirEntry:
 		return s.handleReadDirEntry(ctx)
+	case proto.CmdCreateFile:
+		return s.handleCreateFile(ctx)
+	case proto.CmdWriteFile:
+		return s.handleWriteFile(ctx)
+	case proto.CmdDeleteFile:
+		return s.handleDeleteFile(ctx)
+	case proto.CmdMkdir:
+		return s.handleMkdir(ctx)
+	case proto.CmdRmdir:
+		return s.handleRmdir(ctx)
+	case proto.CmdGetDirSize:
+		return s.handleGetDirSize(ctx)
 	default:
 		return fmt.Errorf("unknown opCode: %d", opCode)
 	}
@@ -201,4 +213,84 @@ func (s *Server) handleReadFileCritical(ctx *Context) error {
 	}
 
 	return ctx.wr.SendReadFileCriticalResult(rd)
+}
+
+func (s *Server) handleCreateFile(ctx *Context) error {
+	path, err := ctx.rd.ReadCreateFile()
+	if err != nil {
+		return fmt.Errorf("read file to create path failed: %w", err)
+	}
+
+	if err = s.Handler.HandleCreateFile(ctx, path); err != nil {
+		return ctx.wr.SendCreateFileError()
+	}
+
+	return ctx.wr.SendCreateFileResult()
+}
+
+func (s *Server) handleWriteFile(ctx *Context) error {
+	data, err := ctx.rd.ReadWriteFile()
+	if err != nil {
+		return fmt.Errorf("read file data to write failed: %w", err)
+	}
+
+	written, err := s.Handler.HandleWriteFile(ctx, data)
+	if err != nil {
+		return ctx.wr.SendWriteFileError()
+	}
+
+	return ctx.wr.SendWriteFileResult(written)
+}
+
+func (s *Server) handleDeleteFile(ctx *Context) error {
+	path, err := ctx.rd.ReadDeleteFile()
+	if err != nil {
+		return fmt.Errorf("read file to delete path failed: %w", err)
+	}
+
+	if err = s.Handler.HandleDeleteFile(ctx, path); err != nil {
+		return ctx.wr.SendDeleteFileError()
+	}
+
+	return ctx.wr.SendDeleteFileResult()
+}
+
+func (s *Server) handleMkdir(ctx *Context) error {
+	path, err := ctx.rd.ReadMkdir()
+	if err != nil {
+		return fmt.Errorf("read directory to create path failed: %w", err)
+	}
+
+	if err = s.Handler.HandleMkdir(ctx, path); err != nil {
+		return ctx.wr.SendMkdirError()
+	}
+
+	return ctx.wr.SendMkdirResult()
+}
+
+func (s *Server) handleRmdir(ctx *Context) error {
+	path, err := ctx.rd.ReadRmdir()
+	if err != nil {
+		return fmt.Errorf("read directory to remove path failed: %w", err)
+	}
+
+	if err = s.Handler.HandleRmdir(ctx, path); err != nil {
+		return ctx.wr.SendRmdirError()
+	}
+
+	return ctx.wr.SendMkdirResult()
+}
+
+func (s *Server) handleGetDirSize(ctx *Context) error {
+	path, err := ctx.rd.ReadGetDirSize()
+	if err != nil {
+		return fmt.Errorf("read directory to calculate size path failed: %w", err)
+	}
+
+	size, err := s.Handler.HandleGetDirSize(ctx, path)
+	if err != nil {
+		return ctx.wr.SendGetDirectorySizeError()
+	}
+
+	return ctx.wr.SendGetDirectorySizeResult(size)
 }

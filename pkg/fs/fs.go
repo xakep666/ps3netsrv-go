@@ -53,7 +53,7 @@ func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, 
 		return fsys.Fs.OpenFile(path, flags, perm)
 	}
 
-	if flags&(os.O_RDWR|os.O_WRONLY|os.O_APPEND) != 0 {
+	if flags&(os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE) != 0 {
 		return nil, syscall.EPERM
 	}
 

@@ -35,7 +35,7 @@ var ErrNotDirectory = fmt.Errorf("not a directory")
 
 var paramSFOPath = filepath.Join("PS3_GAME", "PARAM.SFO")
 
-// VirtualISO is a on-the-fly generated .iso disk image.
+// VirtualISO is an on-the-fly generated .iso disk image.
 // According to iso9660 spec image consists of:
 // 1) 16 empty sectors (system area, for ps3 game mode 0 and 1 sectors set)
 // 2) volume descriptors (1 per sector)
