@@ -54,7 +54,7 @@ sepLoop:
 // New constructs IPRange from bounds.
 // This function returns nil in following cases:
 // * one of addresses is nil
-// * left bound greater then right one
+// * left bound greater than right one
 // * addresses has different sizes
 func New(left, right net.IP) *IPRange {
 	if len(left) != len(right) {

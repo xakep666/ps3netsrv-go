@@ -1,5 +1,5 @@
 // Package proto describes ps3netsrv protocol used by WebMAN MOD to interact with remote filesystem using network.
-// Protocol is request-response. Any request starts from OpCode and it's size always 16 bytes including it.
+// Protocol is request-response. Any request starts from OpCode, and it's size always 16 bytes including it.
 // For some messages Command can be followed by arbitrary data which length encoded in Command.Data.
 package proto
 
@@ -16,11 +16,11 @@ const (
 	// Offsets and sizes in bytes. If file read fails, client is exited. Only read data is returned.
 	CmdReadFileCritical
 
-	// CmdReadCD2048Critical reads 2048 sectors in a 2352 sectors iso.
+	// CmdReadCD2048Critical reads 2048 sectors in 2352 sectors iso.
 	// Offsets and sizes in sectors. If file read fails, client is exited.
 	CmdReadCD2048Critical
 
-	// Closes the active wo file (if any) and opens+truncates or creates a new one.
+	// CmdReadFile closes the active wo file (if any) and opens+truncates or creates a new one.
 	CmdReadFile
 
 	// CmdCreateFile Closes the active wo file (if any) and opens+truncates or creates a new one.
@@ -102,7 +102,7 @@ type DirEntry struct {
 	Name        [MaxDirEntryName]byte
 }
 
-// Used by CmdReadDirEntry. Instead of using a fixed-size buffer for Name as in DirEntry,
+// ReadDirEntryResult used by CmdReadDirEntry. Instead of using a fixed-size buffer for Name as in DirEntry,
 // this struct contains FilenameLen so the receiver knows how many bytes to read for the name.
 type ReadDirEntryResult struct {
 	FileSize    int64

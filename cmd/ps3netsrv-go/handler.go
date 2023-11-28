@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/afero"
@@ -44,18 +44,17 @@ func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
 	}
 
 	ctx.CwdHandle = handle
-	ctx.Cwd = &path
 
 	// it's crucial to send "true" for directory and "false" for file
 	return info.IsDir()
 }
 
-func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
+func (h *Handler) HandleReadDirEntry(ctx *server.Context) fs.FileInfo {
 	log := slog.Default()
 
 	log.InfoContext(ctx, "Read Dir Entry")
 
-	if ctx.Cwd == nil || ctx.CwdHandle == nil {
+	if ctx.CwdHandle == nil {
 		log.WarnContext(ctx, "No open dir")
 		return nil
 	}
@@ -78,7 +77,7 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 		}
 
 		// Stat to resolve symlink
-		fileInfo, err := h.Fs.Stat(filepath.Join(*ctx.Cwd, names[0]))
+		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.CwdHandle.Name(), names[0]))
 		if err != nil {
 			log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
@@ -91,28 +90,28 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) os.FileInfo {
 	}
 }
 
-func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
+func (h *Handler) HandleReadDir(ctx *server.Context) []fs.FileInfo {
 	log := slog.Default()
 
-	if ctx.Cwd == nil {
+	if ctx.CwdHandle == nil {
 		log.WarnContext(ctx, "Reading non-opened dir")
-		return []os.FileInfo{}
+		return []fs.FileInfo{}
 	}
 
-	log = log.With(slog.String("path", *ctx.Cwd))
+	log = log.With(slog.String("path", ctx.CwdHandle.Name()))
 	log.InfoContext(ctx, "Read dir")
 
-	entries, err := afero.ReadDir(h.Fs, *ctx.Cwd)
+	entries, err := ctx.CwdHandle.Readdir(-1)
 	if err != nil {
 		log.WarnContext(ctx, "Read dir failed", logutil.ErrorAttr(err))
-		return []os.FileInfo{}
+		return []fs.FileInfo{}
 	}
 
-	var files []os.FileInfo
+	var files []fs.FileInfo
 	for _, entry := range entries {
-		if entry.Mode()&os.ModeSymlink != 0 {
+		if entry.Mode()&fs.ModeSymlink != 0 {
 			// Stat to resolve symlink
-			entry, err = h.Fs.Stat(filepath.Join(*ctx.Cwd, entry.Name()))
+			entry, err = h.Fs.Stat(filepath.Join(ctx.CwdHandle.Name(), entry.Name()))
 			if err != nil {
 				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
@@ -125,7 +124,7 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []os.FileInfo {
 	return files
 }
 
-func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo, error) {
+func (h *Handler) HandleStatFile(ctx *server.Context, path string) (fs.FileInfo, error) {
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Stat file")
 
@@ -133,7 +132,7 @@ func (h *Handler) HandleStatFile(ctx *server.Context, path string) (os.FileInfo,
 	switch {
 	case errors.Is(err, nil):
 		return info, nil
-	case os.IsNotExist(err):
+	case errors.Is(err, afero.ErrFileNotFound):
 		return nil, err
 	default:
 		log.WarnContext(ctx, "Stat file failed", logutil.ErrorAttr(err))

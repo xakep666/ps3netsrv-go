@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
-	"os"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 
@@ -16,7 +16,6 @@ import (
 type LenReader = proto.LenReader
 
 type State struct {
-	Cwd       *string
 	CwdHandle afero.File
 	ROFile    afero.File
 }
@@ -61,9 +60,9 @@ func (s *Context) Close() error {
 
 type Handler interface {
 	HandleOpenDir(ctx *Context, path string) bool
-	HandleReadDir(ctx *Context) []os.FileInfo
-	HandleReadDirEntry(ctx *Context) os.FileInfo
-	HandleStatFile(ctx *Context, path string) (os.FileInfo, error)
+	HandleReadDir(ctx *Context) []fs.FileInfo
+	HandleReadDirEntry(ctx *Context) fs.FileInfo
+	HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	HandleOpenFile(ctx *Context, path string) error
 	HandleCloseFile(ctx *Context)
 	HandleReadFile(ctx *Context, limit uint32, offset uint64) LenReader
