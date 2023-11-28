@@ -5,20 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http/httputil"
 	"path/filepath"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 )
 
 type Server struct {
-	Handler      Handler
-	BufferPool   httputil.BufferPool
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Handler     Handler
+	BufferPool  httputil.BufferPool
+	ReadTimeout time.Duration
 
 	// ConnContext optionally specifies a function that modifies
 	// the context used for a new connection c.
@@ -36,14 +36,6 @@ func (s *Server) Serve(ln net.Listener) error {
 
 		go s.serveConn(conn)
 	}
-}
-
-func (s *Server) setConnWriteDeadline(conn net.Conn) error {
-	if s.WriteTimeout <= 0 {
-		return nil
-	}
-
-	return conn.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
 }
 
 func (s *Server) setConnReadDeadline(conn net.Conn) error {
@@ -70,17 +62,14 @@ func (s *Server) serveConn(conn net.Conn) {
 	}
 	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
 
-	log := zerolog.Ctx(ctx)
-	log.UpdateContext(func(c zerolog.Context) zerolog.Context {
-		return c.Str("remote", conn.RemoteAddr().String())
-	})
+	log := slog.Default().With(logutil.StringerAttr("remote", conn.RemoteAddr()))
 
-	log.Info().Msg("Client connected")
-	defer log.Info().Msg("Client disconnected")
+	log.Info("Client connected")
+	defer log.Info("Client disconnected")
 
 	defer func() {
 		if err := ctx.Close(); err != nil {
-			log.Warn().Err(err).Msg("State closed with errors")
+			log.WarnContext(ctx, "State closed with errors", logutil.ErrorAttr(err))
 		}
 	}()
 
@@ -88,7 +77,7 @@ func (s *Server) serveConn(conn net.Conn) {
 
 	for {
 		if err := s.setConnReadDeadline(conn); err != nil {
-			log.Err(err).Msg("Failed to set read deadline")
+			log.ErrorContext(ctx, "Failed to set read deadline", logutil.ErrorAttr(err))
 			return
 		}
 
@@ -97,24 +86,19 @@ func (s *Server) serveConn(conn net.Conn) {
 		case errors.Is(err, nil):
 			// pass
 		case errors.Is(err, io.EOF):
-			log.Info().Msg("Connection closed")
+			log.InfoContext(ctx, "Connection closed")
 			return
 		default:
-			log.Err(err).Msg("Read command failed")
+			log.ErrorContext(ctx, "Read command failed", logutil.ErrorAttr(err))
 			return
 		}
 
-		oclog := log.With().Stringer("op", opCode).Logger()
+		oclog := log.With(logutil.StringerAttr("opcode", opCode))
 
-		oclog.Debug().Msg("Received opcode")
-
-		if err := s.setConnWriteDeadline(conn); err != nil {
-			oclog.Err(err).Msg("Failed to set write deadline")
-			return
-		}
+		oclog.DebugContext(ctx, "Received opcode")
 
 		if err := s.handleCommand(opCode, ctx); err != nil {
-			oclog.Err(err).Msg("Command handler failed")
+			oclog.ErrorContext(ctx, "Command handler failed")
 			return
 		}
 	}
