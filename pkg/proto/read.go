@@ -95,6 +95,96 @@ func (r *Reader) ReadReadFileCritical() (bytesToRead uint32, offset uint64, err 
 	return cmd.BytesToRead, cmd.Offset, nil
 }
 
+func (r *Reader) ReadCreateFile() (string, error) {
+	var cmd CreateFileCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return "", fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	filePath, err := r.readStringN(cmd.FpLen)
+	if err != nil {
+		return "", fmt.Errorf("readStringN failed: %w", err)
+	}
+
+	return filepath.FromSlash(filePath), nil
+}
+
+func (r *Reader) ReadWriteFile() (io.Reader, error) {
+	var cmd WriteFileCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return nil, fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	return io.LimitReader(r.Reader, int64(cmd.BytesToWrite)), nil
+}
+
+func (r *Reader) ReadDeleteFile() (string, error) {
+	var cmd DeleteFileCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return "", fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	filePath, err := r.readStringN(cmd.FpLen)
+	if err != nil {
+		return "", fmt.Errorf("readStringN failed: %w", err)
+	}
+
+	return filepath.FromSlash(filePath), nil
+}
+
+func (r *Reader) ReadMkdir() (string, error) {
+	var cmd MkdirCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return "", fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	filePath, err := r.readStringN(cmd.DpLen)
+	if err != nil {
+		return "", fmt.Errorf("readStringN failed: %w", err)
+	}
+
+	return filepath.FromSlash(filePath), nil
+}
+
+func (r *Reader) ReadRmdir() (string, error) {
+	var cmd RmdirCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return "", fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	filePath, err := r.readStringN(cmd.DpLen)
+	if err != nil {
+		return "", fmt.Errorf("readStringN failed: %w", err)
+	}
+
+	return filepath.FromSlash(filePath), nil
+}
+func (r *Reader) ReadGetDirSize() (string, error) {
+	var cmd GetDirSizeCommand
+
+	err := r.readCommandTail(&cmd)
+	if err != nil {
+		return "", fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	filePath, err := r.readStringN(cmd.DpLen)
+	if err != nil {
+		return "", fmt.Errorf("readStringN failed: %w", err)
+	}
+
+	return filepath.FromSlash(filePath), nil
+}
+
 // readCommandTail reads remaining data of command.
 func (r *Reader) readCommandTail(tail interface{}) error {
 	err := binary.Read(bytes.NewReader(r.cmd.Data[:]), binary.BigEndian, tail)

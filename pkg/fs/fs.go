@@ -1,7 +1,9 @@
 package fs
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -17,8 +19,8 @@ const (
 )
 
 const (
-	virtualISOMask    = string(os.PathSeparator) + "***DVD***"
-	virtualPS3ISOMask = string(os.PathSeparator) + "***PS3***"
+	virtualISOMask    = string(filepath.Separator) + "***DVD***"
+	virtualPS3ISOMask = string(filepath.Separator) + "***PS3***"
 )
 
 type FS struct {
@@ -36,24 +38,24 @@ func translatePath(path string) (string, FileType) {
 	}
 }
 
-func (fs *FS) Open(path string) (afero.File, error) {
+func (fsys *FS) Open(path string) (afero.File, error) {
 	path, typ := translatePath(path)
 	if typ == GenericFile {
-		return fs.Fs.Open(path)
+		return fsys.Fs.Open(path)
 	}
 
-	return NewVirtualISO(fs.Fs, path, typ == PS3ISOFile)
+	return NewVirtualISO(fsys.Fs, path, typ == PS3ISOFile)
 }
 
-func (fs *FS) OpenFile(path string, flags int, perm os.FileMode) (afero.File, error) {
+func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, error) {
 	path, typ := translatePath(path)
 	if typ == GenericFile {
-		return fs.Fs.OpenFile(path, flags, perm)
+		return fsys.Fs.OpenFile(path, flags, perm)
 	}
 
-	if flags&(os.O_RDWR|os.O_WRONLY|os.O_APPEND) != 0 {
+	if flags&(os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE) != 0 {
 		return nil, syscall.EPERM
 	}
 
-	return NewVirtualISO(fs.Fs, path, typ == PS3ISOFile)
+	return NewVirtualISO(fsys.Fs, path, typ == PS3ISOFile)
 }

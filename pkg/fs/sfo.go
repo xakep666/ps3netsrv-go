@@ -20,7 +20,7 @@ type sfoHeader struct {
 }
 
 type sfoIndexTableEntry struct {
-	KeyOffset  uint16 // relative to key table table start (i.e. 0 for first key)
+	KeyOffset  uint16 // relative to key table start (i.e. 0 for first key)
 	DataFormat uint16
 	DataLen    uint32
 	DataMaxLen uint32

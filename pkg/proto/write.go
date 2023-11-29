@@ -143,6 +143,102 @@ func (w *Writer) SendOpenFileError() error {
 	return nil
 }
 
+func (w *Writer) SendCreateFileResult() error {
+	if err := w.sendResult(CreateFileResult{}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendCreateFileError() error {
+	if err := w.sendResult(CreateFileResult{Result: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendWriteFileResult(written int32) error {
+	if err := w.sendResult(WriteFileResult{BytesWritten: written}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendWriteFileError() error {
+	if err := w.sendResult(WriteFileResult{BytesWritten: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendDeleteFileResult() error {
+	if err := w.sendResult(DeleteFileResult{}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendDeleteFileError() error {
+	if err := w.sendResult(DeleteFileResult{Result: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendMkdirResult() error {
+	if err := w.sendResult(MkdirResult{}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendMkdirError() error {
+	if err := w.sendResult(MkdirResult{Result: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendRmdirResult() error {
+	if err := w.sendResult(RmdirResult{}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendRmdirError() error {
+	if err := w.sendResult(RmdirResult{Result: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendGetDirectorySizeResult(size int64) error {
+	if err := w.sendResult(GetDirSizeResult{Size: size}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
+func (w *Writer) SendGetDirectorySizeError() error {
+	if err := w.sendResult(GetDirSizeResult{Size: -1}); err != nil {
+		return fmt.Errorf("sendResult failed: %w", err)
+	}
+
+	return nil
+}
+
 type LenReader interface {
 	io.Reader
 

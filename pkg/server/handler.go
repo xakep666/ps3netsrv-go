@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
-	"os"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 
@@ -16,9 +16,9 @@ import (
 type LenReader = proto.LenReader
 
 type State struct {
-	Cwd       *string
 	CwdHandle afero.File
 	ROFile    afero.File
+	WOFile    afero.File
 }
 
 type Context struct {
@@ -56,16 +56,30 @@ func (s *Context) Close() error {
 		s.CwdHandle = nil
 	}
 
+	if s.WOFile != nil {
+		if err := s.WOFile.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("WOFile close failed: %w", err))
+		}
+
+		s.WOFile = nil
+	}
+
 	return errors.Join(errs...)
 }
 
 type Handler interface {
 	HandleOpenDir(ctx *Context, path string) bool
-	HandleReadDir(ctx *Context) []os.FileInfo
-	HandleReadDirEntry(ctx *Context) os.FileInfo
-	HandleStatFile(ctx *Context, path string) (os.FileInfo, error)
+	HandleReadDir(ctx *Context) []fs.FileInfo
+	HandleReadDirEntry(ctx *Context) fs.FileInfo
+	HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	HandleOpenFile(ctx *Context, path string) error
 	HandleCloseFile(ctx *Context)
 	HandleReadFile(ctx *Context, limit uint32, offset uint64) LenReader
 	HandleReadFileCritical(ctx *Context, limit uint32, offset uint64) (io.Reader, error)
+	HandleCreateFile(ctx *Context, path string) error
+	HandleWriteFile(ctx *Context, data io.Reader) (int32, error)
+	HandleDeleteFile(ctx *Context, path string) error
+	HandleMkdir(ctx *Context, path string) error
+	HandleRmdir(ctx *Context, path string) error
+	HandleGetDirSize(ctx *Context, path string) (int64, error)
 }

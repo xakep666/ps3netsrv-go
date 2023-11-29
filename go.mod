@@ -3,15 +3,15 @@ module github.com/xakep666/ps3netsrv-go
 go 1.21
 
 require (
-	github.com/alecthomas/kong v0.7.1
-	github.com/lmittmann/tint v1.0.0
+	github.com/alecthomas/kong v0.8.1
+	github.com/lmittmann/tint v1.0.3
 	github.com/mattn/go-colorable v0.1.13
-	github.com/mattn/go-isatty v0.0.16
-	github.com/spf13/afero v1.9.5
+	github.com/mattn/go-isatty v0.0.20
+	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.8.2
-	golang.org/x/net v0.9.0
-	golang.org/x/sys v0.7.0
-	golang.org/x/text v0.9.0
+	golang.org/x/net v0.19.0
+	golang.org/x/sys v0.15.0
+	golang.org/x/text v0.14.0
 )
 
 require (
