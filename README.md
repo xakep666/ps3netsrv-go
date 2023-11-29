@@ -9,10 +9,13 @@ I made it because original code is way hard to read and hard to build for some p
 This project written in Go because it's (cross-)compilation is much easier than C/C++ and resulting binaries
 will run without any external library on target system.
 
-Currently, this project only support serving simple files or plain game directories (without encrypted 3k3yredump images and multipart files).
-But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
+Currently multipart files are not supported. But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
 
 Receiving files from console is supported now! Use flag `--allow-write` to enable this.
+
+Decryption of 3k3y/redump images on-the-fly is supported now! Keys search behaviour completely matches with original `ps3netsrv`:
+at first we try to find `.dkey` file for `.iso` in `PS3ISO` directory. Then we try to find `.dkey` in `REDKEY` directory.
+You can also use `./cmd/iso-decryptor` tool to decrypt images.
 
 ## Running
 Just run
@@ -36,7 +39,7 @@ To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` fla
 
 ## Exposing tips
 * Use limits:
-    * by IP address(es) using 2nd positinal argument: `$ ps3netsrv-go /home/games 192.168.0.123`
+    * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go /home/games --client-whitelist=192.168.0.123`
     * by number of clients using `--max-clients` flag
     * idle connection time: `--read-timeout` flag
 * To expose over NAT (non-public or "grey" IP) you can use:
@@ -46,7 +49,7 @@ To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` fla
 * To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
-[Go 1.20+](https://go.dev/dl/)
+[Go 1.21+](https://go.dev/dl/)
 
 ## Building
 ```bash

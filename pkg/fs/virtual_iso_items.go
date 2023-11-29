@@ -240,7 +240,7 @@ func (d *disc) setSectorByMarshaller(m encoding.BinaryMarshaler, sector sizeSect
 		return err
 	}
 
-	copy((*d)[sector.bytes():(sector+1).bytes()], data)
+	copy((*d)[sector.bytes():sector.next().bytes()], data)
 	return nil
 }
 
