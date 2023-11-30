@@ -9,6 +9,9 @@ builds:
       - windows
       - darwin
     main: ./cmd/ps3netsrv-go
+    ldflags:
+      - "-w"
+      - "-s"
 archives:
   - name_template: >-
       {{ .ProjectName }}_

@@ -54,17 +54,27 @@ var standardIdentifierBytes = [5]byte{'C', 'D', '0', '0', '1'}
 
 type sizeSectors int32
 
+func (s sizeSectors) next() sizeSectors { return s + 1 }
+
+func (s sizeSectors) prev() sizeSectors { return s - 1 }
+
 func (s sizeSectors) bytes() sizeBytes { return sectorSize * sizeBytes(s) }
 
 type sizeBytes int64
 
+// floorSectors returns how many "full" sectors will be occupied by this amount of bytes (floor).
+func (b sizeBytes) floorSectors() sizeSectors {
+	return sizeSectors(b / sectorSize)
+}
+
+// sectors returns how many sectors will be occupied by this amount of bytes (ceil).
 func (b sizeBytes) sectors() sizeSectors {
-	sectors := b / sectorSize
+	sectors := b.floorSectors()
 	if b%sectorSize > 0 {
 		sectors++
 	}
 
-	return sizeSectors(sectors)
+	return sectors
 }
 
 type (
