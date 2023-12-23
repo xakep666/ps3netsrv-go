@@ -15,18 +15,22 @@ Receiving files from console is supported now! Use flag `--allow-write` to enabl
 
 Decryption of 3k3y/redump images on-the-fly is supported now! Keys search behaviour completely matches with original `ps3netsrv`:
 at first we try to find `.dkey` file for `.iso` in `PS3ISO` directory. Then we try to find `.dkey` in `REDKEY` directory.
-You can also use `./cmd/iso-decryptor` tool to decrypt images.
+You can also use 
+```bash
+$ ps3netsrv-go decrypt
+```
+tool to decrypt images.
 
 ## Running
 Just run
 ```bash
-$ ps3netsrv-go
+$ ps3netsrv-go server
 ```
 from your working directory to serve it.
 
-Or specify custom root directory in 1st positional argument:
+Or specify custom root directory in 1st positional argument of `server` subcommand:
 ```bash
-$ ps3netsrv-go /home/user/games
+$ ps3netsrv-go server /home/user/games
 ```
 
 To get help run:
@@ -39,7 +43,7 @@ To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` fla
 
 ## Exposing tips
 * Use limits:
-    * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go /home/games --client-whitelist=192.168.0.123`
+    * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server /home/games --client-whitelist=192.168.0.123`
     * by number of clients using `--max-clients` flag
     * idle connection time: `--read-timeout` flag
 * To expose over NAT (non-public or "grey" IP) you can use:
