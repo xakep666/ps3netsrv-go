@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/xakep666/ps3netsrv-go/internal/isroot"
 	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
@@ -110,8 +111,19 @@ func (sapp *serverApp) server() error {
 	return s.Serve(socket)
 }
 
+func (sapp *serverApp) warnRoot() {
+	if isroot.IsRoot() {
+		if sapp.AllowWrite {
+			slog.Warn("Running as root/administrator with write access is dangerous! This may damage your data!")
+		} else {
+			slog.Warn("Running as root/administrator is not recommended! Please run as a regular user.")
+		}
+	}
+}
+
 func (sapp *serverApp) Run() error {
 	sapp.setupLogger()
+	sapp.warnRoot()
 
 	var eg errgroup.Group
 	eg.Go(sapp.debugServer)
