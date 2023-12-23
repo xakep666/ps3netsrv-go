@@ -41,6 +41,16 @@ $ ps3netsrv-go --help
 
 To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` flag.
 
+## Configuration
+Server supports configuration via environment variables and command line flags.
+Environment variables names can be found in output of `ps3netsrv-go server --help` command.
+I.e. in line:
+```
+Arguments:
+  [<root>]    Root directory with games ($PS3NETSRV_ROOT).
+```
+`PS3NETSRV_ROOT` is environment variable name.
+
 ## Exposing tips
 * Use limits:
     * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server /home/games --client-whitelist=192.168.0.123`

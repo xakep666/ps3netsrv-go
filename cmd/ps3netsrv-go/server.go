@@ -25,18 +25,18 @@ import (
 )
 
 type serverApp struct {
-	Root string `help:"Root directory with games." arg:"" type:"existingdir" default:"."`
+	Root string `help:"Root directory with games." arg:"" type:"existingdir" default:"." env:"PS3NETSRV_ROOT"`
 
-	ListenAddr            string           `help:"Main server listen address." default:":38008"`
-	Debug                 bool             `help:"Enable debug log messages."`
-	JSONLog               bool             `help:"Output log messages in json format."`
-	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided."`
-	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m"`
-	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit."`
-	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')."`
-	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations."`
+	ListenAddr            string           `help:"Main server listen address." default:":38008" env:"PS3NETSRV_LISTEN_ADDR"`
+	Debug                 bool             `help:"Enable debug log messages." env:"PS3NETSRV_DEBUG"`
+	JSONLog               bool             `help:"Output log messages in json format." env:"PS3NETSRV_JSON_LOG"`
+	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided." env:"PS3NETSRV_DEBUG_SERVER_LISTEN_ADDR"`
+	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration." default:"10m" env:"PS3NETSRV_READ_TIMEOUT"`
+	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit." env:"PS3NETSRV_MAX_CLIENTS"`
+	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')." env:"PS3NETSRV_CLIENT_WHITELIST"`
+	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations." env:"PS3NETSRV_ALLOW_WRITE"`
 	// default value found during debugging
-	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535"`
+	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535" env:"PS3NETSRV_BUFFER_SIZE"`
 }
 
 func (sapp *serverApp) setupLogger() {
