@@ -77,12 +77,39 @@ func (sapp *serverApp) debugServer() error {
 	return http.Serve(socket, nil)
 }
 
+func (sapp *serverApp) warnIPRange(listener net.Listener) {
+	if sapp.ClientWhitelist == nil {
+		return
+	}
+
+	var addrToCheck net.IP
+	switch addr := listener.Addr().(type) {
+	case *net.TCPAddr:
+		addrToCheck = addr.IP
+	case *net.UDPAddr:
+		addrToCheck = addr.IP
+	case *net.IPAddr:
+		addrToCheck = addr.IP
+	default:
+		return
+	}
+	if addrToCheck.IsUnspecified() {
+		return
+	}
+
+	if !sapp.ClientWhitelist.Contains(addrToCheck) {
+		slog.Warn("Listener address is not in client whitelist. This may cause connection problems.",
+			"whitelist", sapp.ClientWhitelist)
+	}
+}
+
 func (sapp *serverApp) server() error {
 	socket, err := net.Listen("tcp", sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
 
+	sapp.warnIPRange(socket)
 	slog.Info("Listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
 	var bufPool httputil.BufferPool

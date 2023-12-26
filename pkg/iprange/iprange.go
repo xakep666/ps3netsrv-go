@@ -169,3 +169,7 @@ func (r *IPRange) UnmarshalText(in []byte) error {
 	*r = *parsed
 	return nil
 }
+
+func (r *IPRange) String() string {
+	return fmt.Sprintf("%s-%s", r.left, r.right)
+}
