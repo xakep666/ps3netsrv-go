@@ -32,7 +32,7 @@ type app struct {
 
 func main() {
 	var app app
-	ctx := kong.Parse(&app,
+	k := kong.Must(&app,
 		kong.Name("ps3netsrv-go"),
 		kong.Description("Alternative ps3netsrv implementation for installing games over network."),
 		kong.Configuration(kongini.Loader, configLocations()...),
@@ -42,6 +42,8 @@ func main() {
 		kong.UsageOnError(),
 		kong.TypeMapper(reflect.TypeOf((*writeFile)(nil)), kong.MapperFunc(writeFileMapper)),
 	)
+	ctx, err := k.Parse(translateArgs(os.Args[1:]))
+	ctx.FatalIfErrorf(err)
 	ctx.FatalIfErrorf(ctx.Run())
 }
 
@@ -54,4 +56,18 @@ func configLocations() []string {
 
 	ret = append(ret, appConfigFile) // search in current workdir
 	return ret
+}
+
+// hack to run server if 1st arg is a path to directory
+// this allows to simply drag-n-drop directory to executable
+func translateArgs(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+
+	if st, err := os.Stat(args[0]); err == nil && st.IsDir() {
+		return append([]string{"server", "--root=" + args[0]}, args[1:]...)
+	}
+
+	return args
 }
