@@ -26,8 +26,7 @@ import (
 )
 
 type serverApp struct {
-	Root string `help:"Root directory with games." arg:"" type:"existingdir" default:"." env:"PS3NETSRV_ROOT"`
-
+	Root                  string           `help:"Root directory with games." type:"existingdir" default:"." env:"PS3NETSRV_ROOT"`
 	ListenAddr            string           `help:"Main server listen address." default:":38008" env:"PS3NETSRV_LISTEN_ADDR"`
 	Debug                 bool             `help:"Enable debug log messages." env:"PS3NETSRV_DEBUG"`
 	JSONLog               bool             `help:"Output log messages in json format." env:"PS3NETSRV_JSON_LOG"`

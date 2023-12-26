@@ -28,9 +28,9 @@ $ ps3netsrv-go server
 ```
 from your working directory to serve it.
 
-Or specify custom root directory in 1st positional argument of `server` subcommand:
+Or specify custom root directory in `--root` flag of `server` subcommand:
 ```bash
-$ ps3netsrv-go server /home/user/games
+$ ps3netsrv-go server --root=/home/user/games
 ```
 
 To get help run:
@@ -46,14 +46,31 @@ Server supports configuration via environment variables and command line flags.
 Environment variables names can be found in output of `ps3netsrv-go server --help` command.
 I.e. in line:
 ```
-Arguments:
-  [<root>]    Root directory with games ($PS3NETSRV_ROOT).
+--root="."                             Root directory with games ($PS3NETSRV_ROOT).
 ```
 `PS3NETSRV_ROOT` is environment variable name.
 
+Also server supports configuration via config file. Example:
+```ini
+[server]
+root = /home/user/games
+client-whitelist = 192.168.1.0/24
+max-clients = 10
+allow-write = true
+```
+Configuration keys names are the same as command line flags names without `--` prefix.
+
+Config file discovered in following order:
+* `--config` flag or `PS3NETSRV_CONFIG_FILE` environment variable
+* `config.ini` file in current directory
+* `<user config directory>/ps3netsrv-go/config.ini`, where `<user config directory>` is OS-specific directory for user configuration files:
+  * `%APPDATA%` on Windows
+  * `$XDG_CONFIG_HOME` or `~/.config` on Linux
+  * `~/Library/Application Support` on macOS
+
 ## Exposing tips
 * Use limits:
-    * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server /home/games --client-whitelist=192.168.0.123`
+    * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server --root=/home/games --client-whitelist=192.168.0.123`
     * by number of clients using `--max-clients` flag
     * idle connection time: `--read-timeout` flag
 * To expose over NAT (non-public or "grey" IP) you can use:
