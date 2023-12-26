@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	_ "net/http/pprof"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/lmittmann/tint"
@@ -147,9 +148,53 @@ func (sapp *serverApp) warnRoot() {
 	}
 }
 
+func (sapp *serverApp) warnLargeDir() {
+	const maxEntries = 4096 // from ps3netsrv
+
+	queue := []string{sapp.Root}
+	scanDir := func(path string) {
+		slog.Debug("Checking dir for entries limit", "dir", path)
+
+		dir, err := os.Open(path)
+		if err != nil {
+			return
+		}
+
+		defer dir.Close()
+
+		var numEntries int
+		for {
+			entries, err := dir.ReadDir(maxEntries)
+			if err != nil {
+				break
+			}
+
+			numEntries += len(entries)
+			for _, entry := range entries {
+				if entry.IsDir() {
+					queue = append(queue, filepath.Join(path, entry.Name()))
+				}
+			}
+		}
+
+		if numEntries > maxEntries {
+			slog.Warn("Found directory that contains too many entries. Note that WebMan Mod has a limit of entries per directory so some items may be inaccessible.",
+				"dir", path, "entries", numEntries, "limit", maxEntries)
+		}
+	}
+
+	for len(queue) > 0 {
+		dir := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		scanDir(dir)
+	}
+}
+
 func (sapp *serverApp) Run() error {
 	sapp.setupLogger()
 	sapp.warnRoot()
+	go sapp.warnLargeDir() // asynchronously to not delay server startup
 
 	var eg errgroup.Group
 	eg.Go(sapp.debugServer)
