@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 
 	"github.com/alecthomas/kong"
 	"github.com/xakep666/ps3netsrv-go/internal/kongini"
@@ -40,11 +39,10 @@ func main() {
 			"version": fmt.Sprintf("%s (commit '%s' at '%s' build by '%s')", version, commit, date, builtBy),
 		},
 		kong.UsageOnError(),
-		kong.TypeMapper(reflect.TypeOf((*writeFile)(nil)), kong.MapperFunc(writeFileMapper)),
 	)
 	ctx, err := k.Parse(translateArgs(os.Args[1:]))
-	ctx.FatalIfErrorf(err)
-	ctx.FatalIfErrorf(ctx.Run())
+	k.FatalIfErrorf(err)
+	k.FatalIfErrorf(ctx.Run())
 }
 
 func configLocations() []string {

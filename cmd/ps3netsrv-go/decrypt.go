@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reflect"
 
 	"github.com/alecthomas/kong"
 
@@ -68,7 +67,7 @@ type writeFile struct {
 	*os.File
 }
 
-func writeFileMapper(dctx *kong.DecodeContext, target reflect.Value) error {
+func (wf *writeFile) Decode(dctx *kong.DecodeContext) error {
 	var path string
 	err := dctx.Scan.PopValueInto("string", &path)
 	if err != nil {
@@ -77,7 +76,7 @@ func writeFileMapper(dctx *kong.DecodeContext, target reflect.Value) error {
 	path = kong.ExpandPath(path)
 
 	if path == "-" {
-		target.Set(reflect.ValueOf(&writeFile{os.Stdout}))
+		wf.File = os.Stdout
 		return nil
 	}
 
@@ -91,7 +90,7 @@ func writeFileMapper(dctx *kong.DecodeContext, target reflect.Value) error {
 		return err
 	}
 
-	target.Set(reflect.ValueOf(&writeFile{f}))
+	wf.File = f
 
 	return nil
 }
