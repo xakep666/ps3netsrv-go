@@ -73,12 +73,13 @@ func (wf *writeFile) Decode(dctx *kong.DecodeContext) error {
 	if err != nil {
 		return err
 	}
-	path = kong.ExpandPath(path)
 
 	if path == "-" {
 		wf.File = os.Stdout
 		return nil
 	}
+
+	path = kong.ExpandPath(path)
 
 	_, err = os.Stat(path)
 	if err == nil {
