@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/xakep666/ps3netsrv-go/internal/testutil"
+
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
-	"github.com/xakep666/ps3netsrv-go/pkg/internal/testutil"
 )
 
 func TestMakeFullImage(t *testing.T) {

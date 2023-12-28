@@ -11,9 +11,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
+
 	"github.com/spf13/afero"
 
-	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 

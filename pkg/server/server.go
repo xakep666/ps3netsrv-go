@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
+
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 )
 

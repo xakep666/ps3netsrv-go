@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/xakep666/ps3netsrv-go/internal/bufferpool"
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
+
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -19,10 +22,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/xakep666/ps3netsrv-go/internal/isroot"
-	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
-	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
