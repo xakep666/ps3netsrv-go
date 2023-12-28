@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xakep666/ps3netsrv-go/pkg/internal/testutil"
+	"github.com/xakep666/ps3netsrv-go/internal/testutil"
 )
 
 func TestMountISO(t *testing.T) {

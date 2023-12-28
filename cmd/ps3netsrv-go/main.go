@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/alecthomas/kong"
-	"github.com/xakep666/ps3netsrv-go/internal/kongini"
+
+	"github.com/xakep666/ps3netsrv-go/pkg/kongini"
 )
 
 const (

@@ -4,15 +4,17 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net/http/httputil"
 	"os"
 
 	"github.com/spf13/afero"
+
+	"github.com/xakep666/ps3netsrv-go/internal/copier"
 )
 
 type Writer struct {
 	io.Writer
-	BufferPool httputil.BufferPool
+
+	Copier *copier.Copier
 }
 
 func (w *Writer) SendOpenDirResult(success bool) error {
@@ -250,7 +252,7 @@ func (w *Writer) SendReadFileResult(data LenReader) error {
 		return fmt.Errorf("sendResult failed: %w", err)
 	}
 
-	_, err := w.copyBuffered(w.Writer, data)
+	_, err := w.Copier.Copy(w.Writer, data)
 	if err != nil {
 		return fmt.Errorf("buffer write failed: %w", err)
 	}
@@ -259,30 +261,12 @@ func (w *Writer) SendReadFileResult(data LenReader) error {
 }
 
 func (w *Writer) SendReadFileCriticalResult(data io.Reader) error {
-	_, err := w.copyBuffered(w.Writer, data)
+	_, err := w.Copier.Copy(w.Writer, data)
 	if err != nil {
 		return fmt.Errorf("buffer write failed: %w", err)
 	}
 
 	return nil
-}
-
-type readerOnly struct{ io.Reader }
-
-type writerOnly struct{ io.Writer }
-
-func (w *Writer) copyBuffered(to io.Writer, from io.Reader) (int64, error) {
-	// ensure that we will use plain copy
-	to = writerOnly{to}
-	from = readerOnly{from}
-
-	if w.BufferPool == nil {
-		return io.Copy(to, from)
-	}
-
-	buf := w.BufferPool.Get()
-	defer w.BufferPool.Put(buf)
-	return io.CopyBuffer(to, from, buf)
 }
 
 func (w *Writer) sendResult(data interface{}) error {

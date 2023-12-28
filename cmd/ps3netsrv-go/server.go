@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	_ "net/http/pprof"
 	"os"
 	"path/filepath"
@@ -18,11 +17,11 @@ import (
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/xakep666/ps3netsrv-go/internal/copier"
 	"github.com/xakep666/ps3netsrv-go/internal/isroot"
-	"github.com/xakep666/ps3netsrv-go/pkg/bufferpool"
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
-	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
@@ -113,18 +112,18 @@ func (sapp *serverApp) server() error {
 	sapp.warnIPRange(socket)
 	slog.Info("Listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
-	var bufPool httputil.BufferPool
+	var cop *copier.Copier
 	if sapp.BufferSize > 0 {
-		bufPool = bufferpool.NewBufferPool(sapp.BufferSize)
+		cop = copier.NewPooledCopier(sapp.BufferSize)
 	}
 
 	s := server.Server{
 		Handler: &Handler{
 			Fs:         &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), sapp.Root)},
 			AllowWrite: sapp.AllowWrite,
-			BufferPool: bufPool,
+			Copier:     cop,
 		},
-		BufferPool:  bufPool,
+		Copier:      cop,
 		ReadTimeout: sapp.ReadTimeout,
 	}
 

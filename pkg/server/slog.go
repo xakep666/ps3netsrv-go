@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/xakep666/ps3netsrv-go/pkg/logutil"
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 )
 
 // SlogContextHandler wraps slog.Handler to inject attributes from Context.
