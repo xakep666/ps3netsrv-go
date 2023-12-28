@@ -25,6 +25,7 @@ var (
 type app struct {
 	ServerApp  serverApp  `cmd:"" name:"server" help:"Run server."`
 	DecryptApp decryptApp `cmd:"" name:"decrypt" help:"Decrypt encrypted images."`
+	MakeISOApp makeISOApp `cmd:"" name:"make-iso" help:"Make ISO image from directory."`
 
 	Version kong.VersionFlag `help:"Show application version info."`
 	Config  kong.ConfigFlag  `help:"Load configuration from file." env:"PS3NETSRV_CONFIG_FILE"`
