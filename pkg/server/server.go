@@ -7,18 +7,17 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"net/http/httputil"
 	"path/filepath"
 	"time"
 
+	"github.com/xakep666/ps3netsrv-go/internal/copier"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 )
 
 type Server struct {
 	Handler     Handler
-	BufferPool  httputil.BufferPool
+	Copier      *copier.Copier
 	ReadTimeout time.Duration
 
 	// ConnContext optionally specifies a function that modifies
@@ -59,7 +58,7 @@ func (s *Server) serveConn(conn net.Conn) {
 	ctx := &Context{
 		RemoteAddr: conn.RemoteAddr(),
 		rd:         proto.Reader{Reader: conn},
-		wr:         proto.Writer{Writer: conn, BufferPool: s.BufferPool},
+		wr:         proto.Writer{Writer: conn, Copier: s.Copier},
 	}
 	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
 

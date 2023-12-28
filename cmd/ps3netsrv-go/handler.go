@@ -7,14 +7,13 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"net/http/httputil"
 	"os"
 	"path/filepath"
 
-	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-
 	"github.com/spf13/afero"
 
+	"github.com/xakep666/ps3netsrv-go/internal/copier"
+	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
@@ -23,7 +22,7 @@ var ErrWriteForbidden = fmt.Errorf("write operation forbidden")
 type Handler struct {
 	Fs afero.Fs
 
-	BufferPool httputil.BufferPool
+	Copier     *copier.Copier
 	AllowWrite bool
 }
 
@@ -275,7 +274,7 @@ func (h *Handler) HandleWriteFile(ctx *server.Context, data io.Reader) (int32, e
 		return 0, fmt.Errorf("file for writing was not opened")
 	}
 
-	written, err := h.copyBuffered(ctx.WOFile, data)
+	written, err := h.Copier.Copy(ctx.WOFile, data)
 	if err != nil {
 		slog.WarnContext(ctx, "Write data failed", logutil.ErrorAttr(err))
 		return 0, err
@@ -364,22 +363,4 @@ func (h *Handler) HandleGetDirSize(ctx *server.Context, path string) (int64, err
 	log.DebugContext(ctx, "Directory size calculated", slog.Int64("size", size))
 
 	return size, nil
-}
-
-type readerOnly struct{ io.Reader }
-
-type writerOnly struct{ io.Writer }
-
-func (h *Handler) copyBuffered(to io.Writer, from io.Reader) (int64, error) {
-	// ensure that we will use plain copy
-	to = writerOnly{to}
-	from = readerOnly{from}
-
-	if h.BufferPool == nil {
-		return io.Copy(to, from)
-	}
-
-	buf := h.BufferPool.Get()
-	defer h.BufferPool.Put(buf)
-	return io.CopyBuffer(to, from, buf)
 }
