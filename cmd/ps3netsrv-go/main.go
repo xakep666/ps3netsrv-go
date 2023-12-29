@@ -7,6 +7,7 @@ import (
 
 	"github.com/alecthomas/kong"
 
+	"github.com/xakep666/ps3netsrv-go/internal/kongutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/kongini"
 )
 
@@ -41,6 +42,8 @@ func main() {
 			"version": fmt.Sprintf("%s (commit '%s' at '%s' build by '%s')", version, commit, date, builtBy),
 		},
 		kong.UsageOnError(),
+		kongutil.OutputFileMapper,
+		kongutil.BinSizeMapper,
 	)
 	ctx, err := k.Parse(translateArgs(os.Args[1:]))
 	k.FatalIfErrorf(err)

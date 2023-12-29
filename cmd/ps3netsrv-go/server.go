@@ -36,7 +36,7 @@ type serverApp struct {
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')." env:"PS3NETSRV_CLIENT_WHITELIST"`
 	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations." env:"PS3NETSRV_ALLOW_WRITE"`
 	// default value found during debugging
-	BufferSize int `help:"Size of buffer for data transfer. Change it only if you know what you doing." default:"65535" env:"PS3NETSRV_BUFFER_SIZE"`
+	BufferSize int64 `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k" env:"PS3NETSRV_BUFFER_SIZE"`
 }
 
 func (sapp *serverApp) setupLogger() {

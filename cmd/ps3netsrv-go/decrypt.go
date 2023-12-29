@@ -5,14 +5,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/alecthomas/kong"
-
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 )
 
 type decrypt3k3yCmd struct {
-	Image  *os.File   `arg:"" help:"Path to 3k3y image to decrypt."`
-	Output *writeFile `arg:"" help:"Path to output image."`
+	Image  *os.File `arg:"" help:"Path to 3k3y image to decrypt."`
+	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
 }
 
 func (c *decrypt3k3yCmd) Run() error {
@@ -36,9 +34,9 @@ func (c *decrypt3k3yCmd) Run() error {
 }
 
 type decryptRedumpCmd struct {
-	Image  *os.File   `arg:"" help:"Path to redump image to decrypt."`
-	Key    *os.File   `arg:"" help:"Path to key"`
-	Output *writeFile `arg:"" help:"Path to output image."`
+	Image  *os.File `arg:"" help:"Path to redump image to decrypt."`
+	Key    *os.File `arg:"" help:"Path to key"`
+	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
 }
 
 func (c *decryptRedumpCmd) Run() error {
@@ -61,37 +59,4 @@ func (c *decryptRedumpCmd) Run() error {
 type decryptApp struct {
 	Decrypt3k3y   decrypt3k3yCmd   `cmd:"" name:"3k3y" help:"Decrypt 3k3y image."`
 	DecryptRedump decryptRedumpCmd `cmd:"" name:"redump" help:"Decrypt Redump image."`
-}
-
-type writeFile struct {
-	*os.File
-}
-
-func (wf *writeFile) Decode(dctx *kong.DecodeContext) error {
-	var path string
-	err := dctx.Scan.PopValueInto("string", &path)
-	if err != nil {
-		return err
-	}
-
-	if path == "-" {
-		wf.File = os.Stdout
-		return nil
-	}
-
-	path = kong.ExpandPath(path)
-
-	_, err = os.Stat(path)
-	if err == nil {
-		return fmt.Errorf("target file already exists")
-	}
-
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, os.ModePerm)
-	if err != nil {
-		return err
-	}
-
-	wf.File = f
-
-	return nil
 }
