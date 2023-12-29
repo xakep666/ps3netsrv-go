@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/spf13/afero"
 
@@ -10,9 +11,9 @@ import (
 )
 
 type makeISOApp struct {
-	Directory string     `arg:"" help:"Path to directory to make ISO from." type:"existingdir"`
-	Target    *writeFile `arg:"" help:"Path to output image."`
-	PS3Mode   bool       `name:"ps3-mode" help:"Enable PS3 mode. Use to make PS3-game ISO (with specific data in first sectors) from unpacked game."`
+	Directory string   `arg:"" help:"Path to directory to make ISO from." type:"existingdir"`
+	Target    *os.File `arg:"" help:"Path to output image." type:"outputfile"`
+	PS3Mode   bool     `name:"ps3-mode" help:"Enable PS3 mode. Use to make PS3-game ISO (with specific data in first sectors) from unpacked game."`
 }
 
 func (a *makeISOApp) Run() error {

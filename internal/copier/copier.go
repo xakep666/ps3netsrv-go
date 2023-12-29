@@ -9,7 +9,7 @@ type Copier struct {
 	pool *sync.Pool
 }
 
-func NewPooledCopier(defaultBufferSize int) *Copier {
+func NewPooledCopier(defaultBufferSize int64) *Copier {
 	return &Copier{
 		pool: &sync.Pool{
 			New: func() interface{} {

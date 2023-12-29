@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/alecthomas/kong v0.8.1
+	github.com/docker/go-units v0.5.0
 	github.com/lmittmann/tint v1.0.3
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
