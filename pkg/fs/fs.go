@@ -66,6 +66,16 @@ func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, 
 		return f, err
 	}
 
+	// do not try wrappers if it is a directory
+	stat, err := f.Stat()
+	if err != nil {
+		return f, err
+	}
+
+	if stat.IsDir() {
+		return f, nil
+	}
+
 	key, err := tryGetRedumpKey(fsys.Fs, path)
 	switch {
 	case errors.Is(err, nil):
