@@ -9,29 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestVirtualISO(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	afero.WriteFile(fs, "PKG/test.txt", []byte("hello world!!"), os.ModePerm)
-
-	f, err := NewVirtualISO(fs, "PKG", false)
-	require.NoError(t, err)
-
-	out := make(disc, len(f.fsBuf))
-	copy(out, f.fsBuf)
-
-	out.appendSector([]byte("hello world!!"))
-
-	padSectors := basePadSectors
-
-	if extraPad := sizeBytes(len(out)).sectors() % basePadSectors; extraPad > 0 {
-		padSectors += basePadSectors - extraPad
-	}
-
-	out = append(out, make([]byte, padSectors.bytes())...)
-
-	os.WriteFile("../../test_gen.iso", out, os.ModePerm)
-}
-
 func TestSFO(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	afero.WriteFile(fs, "param.sfo", []byte{

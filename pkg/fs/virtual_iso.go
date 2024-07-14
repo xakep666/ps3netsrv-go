@@ -19,12 +19,10 @@ const (
 	ps3ModeVolumeName = "PS3VOLUME"
 	consoleID         = "PlayStation3"
 
-	multiExtentPartSize       sizeBytes   = 0xFFFFF800
-	maxPartSize               sizeBytes   = 0xFFFFFFFF
-	basePadSectors            sizeSectors = 0x20
-	volumeDescriptorsCount    sizeSectors = 3
-	discRangesSectorPlacement sizeSectors = 0
-	discInfoSectorPlacement   sizeSectors = 1
+	multiExtentPartSize    sizeBytes   = 0xFFFFF800
+	maxPartSize            sizeBytes   = 0xFFFFFFFF
+	basePadSectors         sizeSectors = 0x20
+	volumeDescriptorsCount sizeSectors = 3
 
 	dotEntryIdentifier    = stringD1(byte(0))
 	dotDotEntryIdentifier = stringD1(byte(1))
@@ -74,8 +72,8 @@ type VirtualISO struct {
 	totalSize    sizeBytes // whole disc size (with files)
 	padAreaStart sizeBytes
 	padAreaSize  sizeBytes
-	fsBuf        disc      // binary-encoded filesystem structures
-	offset       sizeBytes // used during Read and Seek
+	fsBuf        iso9660encoder // binary-encoded filesystem structures
+	offset       sizeBytes      // used during Read and Seek
 }
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
@@ -303,7 +301,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 		item.dirEntry = append(item.dirEntry, dotEntry, dotDotEntry)
 	}
 
-	totalSizeBytes += dotEntry.Size() + dotDotEntry.Size()
+	totalSizeBytes += dotEntry.size() + dotDotEntry.size()
 
 	// file entries
 	for _, fileItem := range item.files {
@@ -344,7 +342,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 				item.dirEntry = append(item.dirEntry, entry)
 			}
 
-			totalSizeBytes += entry.Size()
+			totalSizeBytes += entry.size()
 		}
 	}
 
@@ -371,7 +369,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			item.dirEntry = append(item.dirEntry, entry)
 		}
 
-		totalSizeBytes += entry.Size()
+		totalSizeBytes += entry.size()
 	}
 
 	// total size must be integer number of sectors so ceil it if needed
@@ -531,27 +529,22 @@ func (viso *VirtualISO) makeVolumeDescriptors(volumeName string) {
 }
 
 func (viso *VirtualISO) writeFSStructures(gameCode string) error {
-	// 16 empty sectors
-	for i := sizeSectors(0); i < systemAreaSize.sectors(); i++ {
-		viso.fsBuf.appendSector(emptySector[:])
-	}
-
 	// ps3-game specific sectors
+	emptySectorsNeeded := systemAreaSize.sectors()
 	if viso.ps3Mode {
-		err := viso.fsBuf.setSectorByMarshaller(discRangesSector{{
+		emptySectorsNeeded -= 2
+
+		viso.fsBuf.appendEncodable(discRangesSector{{
 			StartSector: 0,
 			EndSector:   viso.volumeSizeSectors - 1,
-		}}, discRangesSectorPlacement)
-		if err != nil {
-			return fmt.Errorf("failed to write ranges sector: %w", err)
-		}
+		}}, sectorSize)
 
 		infoSector := discInfoSector{
 			ConsoleID: consoleID,
 			ProductID: gameCode[:4] + "-" + gameCode[4:], // i.e. BCES-00104
 		}
 
-		_, err = io.ReadFull(rand.Reader, infoSector.Info[:])
+		_, err := io.ReadFull(rand.Reader, infoSector.Info[:])
 		if err != nil {
 			return fmt.Errorf("failed to generate info in info sector: %w", err)
 		}
@@ -561,65 +554,44 @@ func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 			return fmt.Errorf("failed to generate hash in info sector: %w", err)
 		}
 
-		if err := viso.fsBuf.setSectorByMarshaller(&infoSector, discInfoSectorPlacement); err != nil {
-			return fmt.Errorf("failed to write info sector: %w", err)
-		}
+		viso.fsBuf.appendEncodable(&infoSector, sectorSize)
 	}
+
+	// empty sectors
+	viso.fsBuf.appendZeroSectors(emptySectorsNeeded)
 
 	// volume descriptors
 	for _, vd := range viso.volumeDescriptors {
-		if err := viso.fsBuf.appendMarshaller(vd, true); err != nil {
-			return fmt.Errorf("failed to write volume descriptor: %w", err)
-		}
+		viso.fsBuf.appendEncodable(vd, sectorSize)
 	}
 
 	// empty sector
-	viso.fsBuf.appendSector(emptySector[:])
+	viso.fsBuf.appendZeroSectors(1)
 
 	// pathTableL
 	for _, e := range viso.pathTable {
-		if err := viso.fsBuf.appendMarshaller(pathTableEntryMarshaller{
-			pathTableEntry: e,
-			order:          binary.LittleEndian,
-		}, false); err != nil {
-			return fmt.Errorf("failed to make little-endian path table item: %w", err)
-		}
+		e.encodeOrdered(&viso.fsBuf, binary.LittleEndian)
 	}
 
 	viso.fsBuf.padLastSector()
 
 	// pathTableM
 	for _, e := range viso.pathTable {
-		if err := viso.fsBuf.appendMarshaller(pathTableEntryMarshaller{
-			pathTableEntry: e,
-			order:          binary.BigEndian,
-		}, false); err != nil {
-			return fmt.Errorf("failed to make little-endian path table item: %w", err)
-		}
+		e.encodeOrdered(&viso.fsBuf, binary.BigEndian)
 	}
 
 	viso.fsBuf.padLastSector()
 
 	// pathTableJolietL
 	for _, e := range viso.pathTableJoliet {
-		if err := viso.fsBuf.appendMarshaller(pathTableEntryMarshaller{
-			pathTableEntry: e,
-			order:          binary.LittleEndian,
-		}, false); err != nil {
-			return fmt.Errorf("failed to make little-endian joliet path table item: %w", err)
-		}
+		e.encodeOrdered(&viso.fsBuf, binary.LittleEndian)
 	}
 
 	viso.fsBuf.padLastSector()
 
 	// pathTableJolietM
 	for _, e := range viso.pathTableJoliet {
-		if err := viso.fsBuf.appendMarshaller(pathTableEntryMarshaller{
-			pathTableEntry: e,
-			order:          binary.BigEndian,
-		}, false); err != nil {
-			return fmt.Errorf("failed to make big-endian joliet path table item: %w", err)
-		}
+		e.encodeOrdered(&viso.fsBuf, binary.BigEndian)
 	}
 
 	viso.fsBuf.padLastSector()
@@ -627,9 +599,7 @@ func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 	// iso directories
 	for _, item := range viso.rootDir {
 		for _, dirEntry := range item.dirEntry {
-			if err := viso.fsBuf.appendMarshaller(dirEntry, false); err != nil {
-				return fmt.Errorf("failed to write iso dir entry: %w", err)
-			}
+			dirEntry.encode(&viso.fsBuf)
 		}
 
 		viso.fsBuf.padLastSector()
@@ -638,9 +608,7 @@ func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 	// joliet directories
 	for _, item := range viso.rootDir {
 		for _, dirEntry := range item.dirEntryJoliet {
-			if err := viso.fsBuf.appendMarshaller(dirEntry, false); err != nil {
-				return fmt.Errorf("failed to write joliet dir entry: %w", err)
-			}
+			dirEntry.encode(&viso.fsBuf)
 		}
 
 		viso.fsBuf.padLastSector()
@@ -677,11 +645,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 
 	// direct read from buffer
 	if offset < viso.fsBuf.size() {
-		end := offset + remain
-		if end > viso.fsBuf.size() {
-			end = viso.fsBuf.size()
-		}
-
+		end := min(offset+remain, viso.fsBuf.size())
 		written := copy(buf, viso.fsBuf[offset:end])
 		buf = buf[written:]
 		remain -= sizeBytes(written)
@@ -719,7 +683,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 					return read, fmt.Errorf("seek %s failed: %w", fileItem.path, err)
 				}
 
-				n, err := io.LimitReader(f, int64(remain)).Read(buf)
+				n, err := f.Read(buf)
 				if err != nil {
 					return read, fmt.Errorf("read %s failed: %w", fileItem.path, err)
 				}

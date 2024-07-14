@@ -1,9 +1,7 @@
 package fs
 
 import (
-	"encoding"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,13 +14,11 @@ import (
 // https://wiki.osdev.org/ISO_9660
 
 const (
-	sectorSize                                sizeBytes = 0x800
-	systemAreaSize                                      = sectorSize * 16
-	standardIdentifier                                  = "CD001"
-	volumeDescriptorBodySize                            = sectorSize - 7
-	primaryVolumeDirectoryIdentifierMaxLength           = 31 // ECMA-119 7.6.3
-	primaryVolumeFileIdentifierMaxLength                = 30 // ECMA-119 7.5
-	pathTableItemsLimit                                 = 0x10000
+	sectorSize                 sizeBytes = 0x800
+	systemAreaSize                       = sectorSize * 16
+	volumeDescriptorHeaderSize           = 7
+	volumeDescriptorBodySize             = sectorSize - volumeDescriptorHeaderSize
+	pathTableItemsLimit                  = 0x10000
 
 	volumeTypeBoot          byte = 0
 	volumeTypePrimary       byte = 1
@@ -93,14 +89,10 @@ type volumeDescriptorHeader struct {
 	Version    byte
 }
 
-var _ encoding.BinaryMarshaler = &volumeDescriptorHeader{}
-
-func (vdh volumeDescriptorHeader) MarshalBinary() ([]byte, error) {
-	data := make([]byte, 7)
-	data[0] = vdh.Type
-	data[6] = vdh.Version
-	copy(data[1:6], vdh.Identifier[:])
-	return data, nil
+func (vdh volumeDescriptorHeader) encode(enc *iso9660encoder) {
+	enc.appendByte(vdh.Type)
+	enc.appendBytes(vdh.Identifier[:])
+	enc.appendByte(vdh.Version)
 }
 
 // primaryVolumeDescriptorBody represents the data in bytes 7-2047
@@ -131,10 +123,8 @@ type primaryVolumeDescriptorBody struct {
 	VolumeExpirationDateAndTime   volumeDescriptorTimestamp
 	VolumeEffectiveDateAndTime    volumeDescriptorTimestamp
 	FileStructureVersion          byte
-	ApplicationUsed               [512]byte
+	ApplicationUsed               []byte
 }
-
-var _ encoding.BinaryMarshaler = primaryVolumeDescriptorBody{}
 
 // directoryEntry contains data from a Directory Descriptor
 // as described by ECMA-119 9.1
@@ -151,9 +141,7 @@ type directoryEntry struct {
 	SystemUse                     []byte
 }
 
-var _ encoding.BinaryMarshaler = directoryEntry{}
-
-func (de directoryEntry) Size() sizeBytes {
+func (de directoryEntry) size() sizeBytes {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
 	totalLen := 33 + identifierLen + idPaddingLen + len(de.SystemUse)
@@ -161,51 +149,34 @@ func (de directoryEntry) Size() sizeBytes {
 	return sizeBytes(totalLen)
 }
 
-// MarshalBinary encodes a directoryEntry to binary form
-func (de directoryEntry) MarshalBinary() ([]byte, error) {
+func (de directoryEntry) encode(enc *iso9660encoder) {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
-	totalLen := de.Size()
-	if totalLen > 255 {
-		return nil, fmt.Errorf("identifier %q is too long", de.Identifier)
+
+	startPos := enc.size()
+	enc.appendByte(0) // reserved for size
+	enc.appendByte(de.ExtendedAttributeRecordLength)
+	enc.appendUint32LSBMSB(uint32(de.ExtentLocation))
+	enc.appendUint32LSBMSB(uint32(de.ExtentLength))
+	de.RecordingDateTime.encode(enc)
+	enc.appendByte(de.FileFlags)
+	enc.appendByte(de.InterleaveSize)
+	enc.appendByte(de.InterleaveSkip)
+	enc.appendUint16LSBMSB(de.VolumeSequenceNumber)
+	enc.appendByte(byte(identifierLen))
+	enc.appendStrD1(de.Identifier, -1)
+	if idPaddingLen > 0 {
+		enc.appendByte(0)
+	}
+	enc.appendBytes(de.SystemUse)
+
+	// ensure that size method works correctly
+	if de.size() != enc.size()-startPos {
+		panic("directory entry size mismatch")
 	}
 
-	data := make([]byte, totalLen)
-
-	data[0] = byte(totalLen)
-	data[1] = de.ExtendedAttributeRecordLength
-
-	writeInt32LSBMSB(data[2:10], uint32(de.ExtentLocation))
-	writeInt32LSBMSB(data[10:18], uint32(de.ExtentLength))
-	de.RecordingDateTime.MarshalBinary(data[18:25])
-	data[25] = de.FileFlags
-	data[26] = de.InterleaveSize
-	data[27] = de.InterleaveSkip
-	writeInt16LSBMSB(data[28:32], de.VolumeSequenceNumber)
-	data[32] = byte(identifierLen)
-	copy(data[33:33+identifierLen], de.Identifier)
-
-	copy(data[33+identifierLen+idPaddingLen:totalLen], de.SystemUse)
-
-	return data, nil
-}
-
-// Clone creates a copy of the directoryEntry
-func (de *directoryEntry) Clone() directoryEntry {
-	newDE := directoryEntry{
-		ExtendedAttributeRecordLength: de.ExtendedAttributeRecordLength,
-		ExtentLocation:                de.ExtentLocation,
-		ExtentLength:                  de.ExtentLength,
-		RecordingDateTime:             de.RecordingDateTime,
-		FileFlags:                     de.FileFlags,
-		InterleaveSize:                de.InterleaveSize,
-		InterleaveSkip:                de.InterleaveSkip,
-		VolumeSequenceNumber:          de.VolumeSequenceNumber,
-		Identifier:                    de.Identifier,
-		SystemUse:                     make([]byte, len(de.SystemUse)),
-	}
-	copy(newDE.SystemUse, de.SystemUse)
-	return newDE
+	// set size
+	enc.setByteAt(byte(enc.size()-startPos), startPos)
 }
 
 type pathTableEntry struct {
@@ -215,7 +186,7 @@ type pathTableEntry struct {
 	DirIdentifier                 stringD1
 }
 
-func (e pathTableEntry) Size() sizeBytes {
+func (e pathTableEntry) size() sizeBytes {
 	totalLen := sizeBytes(8)
 
 	idLen := byte(len(e.DirIdentifier))
@@ -228,85 +199,60 @@ func (e pathTableEntry) Size() sizeBytes {
 	return totalLen
 }
 
-func (e pathTableEntry) MarshalBinary(order binary.ByteOrder) ([]byte, error) {
-	ret := make([]byte, 8)
-	ret[0] = byte(len(e.DirIdentifier))
-	ret[1] = e.ExtendedAttributeRecordLength
-	order.PutUint32(ret[2:6], uint32(e.DirLocation))
-	order.PutUint16(ret[6:8], uint16(e.ParentDirNumber))
-
-	ret = append(ret, e.DirIdentifier[:ret[0]]...)
+func (e pathTableEntry) encodeOrdered(enc *iso9660encoder, order binary.AppendByteOrder) {
+	start := enc.size()
+	enc.appendByte(byte(len(e.DirIdentifier)))
+	enc.appendByte(e.ExtendedAttributeRecordLength)
+	enc.appendUint32(uint32(e.DirLocation), order)
+	enc.appendUint16(uint16(e.ParentDirNumber), order)
+	enc.appendStrD1(e.DirIdentifier, -1)
 
 	// add extra null byte for odd length
-	if ret[0]%2 > 0 {
-		ret = append(ret, 0)
+	if len(e.DirIdentifier)%2 > 0 {
+		enc.appendByte(0)
 	}
 
-	return ret, nil
+	// ensure that size method works correctly
+	if e.size() != enc.size()-start {
+		panic("path table entry size mismatch")
+	}
 }
 
-// MarshalBinary encodes the primaryVolumeDescriptorBody to its binary form
-func (pvd primaryVolumeDescriptorBody) MarshalBinary() ([]byte, error) {
-	output := make([]byte, sectorSize)
+func (pvd primaryVolumeDescriptorBody) encode(enc *iso9660encoder) {
+	enc.appendByte(0) // reserved
+	enc.appendStrA(pvd.SystemIdentifier, 32)
+	enc.appendStrD(pvd.VolumeIdentifier, 32)
+	enc.appendZeroes(8) // reserved
+	enc.appendUint32LSBMSB(uint32(pvd.VolumeSpaceSize))
+	enc.appendString(pvd.EscapeSequences, 32, 0) // for joliet
+	enc.appendUint16LSBMSB(uint16(pvd.VolumeSetSize))
+	enc.appendUint16LSBMSB(pvd.VolumeSequenceNumber)
+	enc.appendUint16LSBMSB(uint16(pvd.LogicalBlockSize))
+	enc.appendUint32LSBMSB(uint32(pvd.PathTableSize))
 
-	copy(output[8:40], pvd.SystemIdentifier)
+	enc.appendUint32(uint32(pvd.TypeLPathTableLoc), binary.LittleEndian)
+	enc.appendUint32(uint32(pvd.OptTypeLPathTableLoc), binary.LittleEndian)
+	enc.appendUint32(uint32(pvd.TypeMPathTableLoc), binary.BigEndian)
+	enc.appendUint32(uint32(pvd.OptTypeMPathTableLoc), binary.BigEndian)
 
-	copy(output[40:72], pvd.VolumeIdentifier)
+	enc.appendEncodable(pvd.RootDirectoryEntry, 34)
 
-	writeInt32LSBMSB(output[80:88], uint32(pvd.VolumeSpaceSize))
-	copy(output[88:120], pvd.EscapeSequences) // for joliet
-	writeInt16LSBMSB(output[120:124], uint16(pvd.VolumeSetSize))
-	writeInt16LSBMSB(output[128:132], uint16(pvd.LogicalBlockSize))
-	writeInt32LSBMSB(output[132:140], uint32(pvd.PathTableSize))
+	enc.appendStrD(pvd.VolumeSetIdentifier, 128)
+	enc.appendStrA(pvd.PublisherIdentifier, 128)
+	enc.appendStrA(pvd.DataPreparerIdentifier, 128)
+	enc.appendStrA(pvd.ApplicationIdentifier, 128)
+	enc.appendStrD(pvd.CopyrightFileIdentifier, 37)
+	enc.appendStrD(pvd.AbstractFileIdentifier, 37)
+	enc.appendStrD(pvd.BibliographicFileIdentifier, 37)
 
-	binary.LittleEndian.PutUint32(output[140:144], uint32(pvd.TypeLPathTableLoc))
-	binary.LittleEndian.PutUint32(output[144:148], uint32(pvd.OptTypeLPathTableLoc))
-	binary.BigEndian.PutUint32(output[148:152], uint32(pvd.TypeMPathTableLoc))
-	binary.BigEndian.PutUint32(output[152:156], uint32(pvd.OptTypeMPathTableLoc))
+	pvd.VolumeCreationDateAndTime.encode(enc)
+	pvd.VolumeModificationDateAndTime.encode(enc)
+	pvd.VolumeExpirationDateAndTime.encode(enc)
+	pvd.VolumeEffectiveDateAndTime.encode(enc)
 
-	binaryRDE, err := pvd.RootDirectoryEntry.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(output[156:190], binaryRDE)
-
-	copy(output[190:318], pvd.VolumeSetIdentifier)
-	copy(output[318:446], pvd.PublisherIdentifier)
-	copy(output[446:574], pvd.DataPreparerIdentifier)
-	copy(output[574:702], pvd.ApplicationIdentifier)
-	copy(output[702:740], pvd.CopyrightFileIdentifier)
-	copy(output[740:776], pvd.AbstractFileIdentifier)
-	copy(output[776:813], pvd.BibliographicFileIdentifier)
-
-	d, err := pvd.VolumeCreationDateAndTime.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(output[813:830], d)
-
-	d, err = pvd.VolumeModificationDateAndTime.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(output[830:847], d)
-
-	d, err = pvd.VolumeExpirationDateAndTime.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(output[847:864], d)
-
-	d, err = pvd.VolumeEffectiveDateAndTime.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	copy(output[864:881], d)
-
-	output[881] = pvd.FileStructureVersion
-	output[882] = 0
-	copy(output[883:1395], pvd.ApplicationUsed[:])
-
-	return output, nil
+	enc.appendByte(pvd.FileStructureVersion)
+	enc.appendByte(0) // reserved
+	enc.appendBytesFixed(pvd.ApplicationUsed, 512)
 }
 
 type volumeDescriptor struct {
@@ -314,38 +260,19 @@ type volumeDescriptor struct {
 	Primary *primaryVolumeDescriptorBody
 }
 
-var _ encoding.BinaryMarshaler = &volumeDescriptor{}
-
-func (vd volumeDescriptor) Type() byte {
-	return vd.Header.Type
-}
-
-// MarshalBinary encodes a volumeDescriptor to binary form
-func (vd volumeDescriptor) MarshalBinary() ([]byte, error) {
-	var output []byte
-	var err error
+func (vd volumeDescriptor) encode(enc *iso9660encoder) {
+	enc.appendEncodable(vd.Header, volumeDescriptorHeaderSize)
 
 	switch vd.Header.Type {
 	case volumeTypeBoot:
-		return nil, errors.New("boot volumes are not yet supported")
+		panic("boot volumes are not yet supported")
 	case volumeTypePartition:
-		return nil, errors.New("partition volumes are not yet supported")
+		panic("partition volumes are not yet supported")
 	case volumeTypePrimary, volumeTypeSupplementary:
-		if output, err = vd.Primary.MarshalBinary(); err != nil {
-			return nil, err
-		}
+		enc.appendEncodable(vd.Primary, volumeDescriptorBodySize)
 	case volumeTypeTerminator:
-		output = make([]byte, sectorSize)
+		enc.appendZeroes(volumeDescriptorBodySize)
 	}
-
-	data, err := vd.Header.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	copy(output[0:7], data)
-
-	return output, nil
 }
 
 // volumeDescriptorTimestamp represents a time and date format
@@ -361,44 +288,34 @@ type volumeDescriptorTimestamp struct {
 	Offset    int
 }
 
-var _ encoding.BinaryMarshaler = &volumeDescriptorTimestamp{}
-
-// MarshalBinary encodes the timestamp into a binary form
-func (ts *volumeDescriptorTimestamp) MarshalBinary() ([]byte, error) {
-	// for empty value return zeroes
-	if *ts == (volumeDescriptorTimestamp{}) {
-		return make([]byte, 17), nil
+func (ts *volumeDescriptorTimestamp) encode(enc *iso9660encoder) {
+	startPos := enc.size()
+	enc.appendFormat("%04d%02d%02d%02d%02d%02d%02d", ts.Year, ts.Month, ts.Day, ts.Hour, ts.Minute, ts.Second, ts.Hundredth)
+	enc.appendByte(byte(ts.Offset))
+	if encodedLen := enc.size() - startPos; encodedLen != 17 {
+		panic(fmt.Sprintf("the formatted timestamp is %d bytes long", encodedLen))
 	}
-
-	formatted := fmt.Sprintf("%04d%02d%02d%02d%02d%02d%02d", ts.Year, ts.Month, ts.Day, ts.Hour, ts.Minute, ts.Second, ts.Hundredth)
-	formattedBytes := append([]byte(formatted), byte(ts.Offset))
-	if len(formattedBytes) != 17 {
-		return nil, fmt.Errorf("volumeDescriptorTimestamp.MarshalBinary: the formatted timestamp is %d bytes long", len(formatted))
-	}
-	return formattedBytes, nil
 }
 
 // recordingTimestamp represents a time and date format
 // that can be encoded according to ECMA-119 9.1.5
 type recordingTimestamp time.Time
 
-// MarshalBinary encodes the recordingTimestamp in its binary form to a buffer
-// of the length of 7 or more bytes
-func (ts recordingTimestamp) MarshalBinary(dst []byte) {
-	_ = dst[6] // early bounds check to guarantee safety of writes below
+func (ts recordingTimestamp) encode(enc *iso9660encoder) {
 	t := time.Time(ts)
 	year, month, day := t.Date()
-	hour, min, sec := t.Clock()
+	hour, minute, sec := t.Clock()
 	_, secOffset := t.Zone()
 	secondsInAQuarter := 60 * 15
 	offsetInQuarters := secOffset / secondsInAQuarter
-	dst[0] = byte(year - 1900)
-	dst[1] = byte(month)
-	dst[2] = byte(day)
-	dst[3] = byte(hour)
-	dst[4] = byte(min)
-	dst[5] = byte(sec)
-	dst[6] = byte(offsetInQuarters)
+
+	enc.appendByte(byte(year - 1900))
+	enc.appendByte(byte(month))
+	enc.appendByte(byte(day))
+	enc.appendByte(byte(hour))
+	enc.appendByte(byte(minute))
+	enc.appendByte(byte(sec))
+	enc.appendByte(byte(offsetInQuarters))
 }
 
 // volumeDescriptorTimestampFromTime converts time.Time to volumeDescriptorTimestamp
@@ -417,20 +334,6 @@ func volumeDescriptorTimestampFromTime(t time.Time) volumeDescriptorTimestamp {
 		Hundredth: hundredth,
 		Offset:    0, // we converted to UTC
 	}
-}
-
-// writeInt32LSBMSB writes a 32-bit integer in both byte orders, as defined in ECMA-119 7.3.3
-func writeInt32LSBMSB(dst []byte, value uint32) {
-	_ = dst[7] // early bounds check to guarantee safety of writes below
-	binary.LittleEndian.PutUint32(dst[0:4], value)
-	binary.BigEndian.PutUint32(dst[4:8], value)
-}
-
-// writeInt16LSBMSB writes a 16-bit integer in both byte orders, as defined in ECMA-119 7.2.3
-func writeInt16LSBMSB(dst []byte, value uint16) {
-	_ = dst[3] // early bounds check to guarantee safety of writes below
-	binary.LittleEndian.PutUint16(dst[0:2], value)
-	binary.BigEndian.PutUint16(dst[2:4], value)
 }
 
 func mangleStrA(in string, joliet bool) stringA {

@@ -1,9 +1,7 @@
 package fs
 
 import (
-	"encoding"
 	"encoding/binary"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -127,7 +125,7 @@ func (l dirItemList) size(joliet bool) sizeBytes {
 		}
 
 		for _, entry := range entries {
-			ret += entry.Size()
+			ret += entry.size()
 		}
 
 		ret = ret.sectors().bytes() // directory entries of one directory aligned to sector
@@ -211,74 +209,11 @@ func (t pathTable) fixLBA(dirLBA sizeSectors) {
 func (t pathTable) size() sizeBytes {
 	var ret sizeBytes
 	for _, e := range t {
-		ret += e.Size()
+		ret += e.size()
 	}
 
 	return ret
 }
-
-// disc representation for more convenient addressing with sectors
-type disc []byte
-
-func (d *disc) appendSector(b []byte) {
-	d.padLastSector()
-
-	if sizeBytes(len(b)) > sectorSize {
-		b = b[:sectorSize]
-	}
-
-	*d = append(*d, b...)
-	if sizeBytes(len(b)) < sectorSize {
-		padding := emptySector[:sectorSize-sizeBytes(len(b))]
-		*d = append(*d, padding...)
-	}
-}
-
-func (d *disc) setSectorByMarshaller(m encoding.BinaryMarshaler, sector sizeSectors) error {
-	data, err := m.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	copy((*d)[sector.bytes():sector.next().bytes()], data)
-	return nil
-}
-
-func (d *disc) appendMarshaller(m encoding.BinaryMarshaler, newSector bool) error {
-	data, err := m.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	if sizeBytes(len(data)) > sectorSize {
-		return fmt.Errorf("too big sector object")
-	}
-
-	// if object will not fit remaining sector space we must write it in new sector
-	if sizeBytes(len(data)) > (sectorSize - sizeBytes(len(*d))%sectorSize) {
-		newSector = true
-	}
-
-	// write to new sector or append to existing
-	if newSector {
-		d.padLastSector()
-	}
-
-	*d = append(*d, data...)
-
-	return nil
-}
-
-func (d *disc) sectors() sizeSectors { return sizeBytes(len(*d)).sectors() }
-
-func (d *disc) padLastSector() {
-	if extra := sizeBytes(len(*d)) % sectorSize; extra > 0 {
-		padding := emptySector[:sectorSize-extra]
-		*d = append(*d, padding...)
-	}
-}
-
-func (d *disc) size() sizeBytes { return sizeBytes(len(*d)) }
 
 //
 // Special ps3 game disk sectors
@@ -291,16 +226,14 @@ type sectorRangeEntry struct {
 
 type discRangesSector []sectorRangeEntry
 
-func (d discRangesSector) MarshalBinary() ([]byte, error) {
-	ret := make([]byte, 8+len(d)*binary.Size(sectorRangeEntry{})) // 2x uint32 first
-	binary.BigEndian.PutUint32(ret[0:4], uint32(len(d)))
+func (d discRangesSector) encode(enc *iso9660encoder) {
+	enc.appendUint32(uint32(len(d)), binary.BigEndian)
+	enc.appendZeroes(4)
 
-	for i, e := range d {
-		binary.BigEndian.PutUint32(ret[8+i*binary.Size(sectorRangeEntry{}):], uint32(e.StartSector))
-		binary.BigEndian.PutUint32(ret[8+i*binary.Size(sectorRangeEntry{})+4:], uint32(e.EndSector))
+	for _, e := range d {
+		enc.appendUint32(uint32(e.StartSector), binary.BigEndian)
+		enc.appendUint32(uint32(e.EndSector), binary.BigEndian)
 	}
-
-	return ret, nil
 }
 
 type discInfoSector struct {
@@ -310,20 +243,12 @@ type discInfoSector struct {
 	Hash      [0x10]byte
 }
 
-func (d *discInfoSector) MarshalBinary() ([]byte, error) {
-	ret := make([]byte, 448)
-
-	copy(ret[:16], d.ConsoleID)
-	// must be padded with spaces
-	for i := 16; i < 48; i++ {
-		ret[i] = ' '
-	}
-	copy(ret[16:48], d.ProductID)
-
-	copy(ret[64:432], d.Info[:])
-	copy(ret[432:], d.Hash[:])
-
-	return ret, nil
+func (d *discInfoSector) encode(enc *iso9660encoder) {
+	enc.appendString(d.ConsoleID, 16, ' ')
+	enc.appendString(d.ProductID, 32, ' ')
+	enc.appendZeroes(16)
+	enc.appendBytes(d.Info[:])
+	enc.appendBytes(d.Hash[:])
 }
 
 func makeIdentifier(name string, joliet bool) stringD1 {
@@ -332,14 +257,4 @@ func makeIdentifier(name string, joliet bool) stringD1 {
 	}
 
 	return mangleStrD1(name, joliet)
-}
-
-type pathTableEntryMarshaller struct {
-	pathTableEntry
-
-	order binary.ByteOrder
-}
-
-func (p pathTableEntryMarshaller) MarshalBinary() (data []byte, err error) {
-	return p.pathTableEntry.MarshalBinary(p.order)
 }

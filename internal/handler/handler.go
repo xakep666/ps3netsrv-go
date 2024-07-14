@@ -19,6 +19,8 @@ import (
 
 var ErrWriteForbidden = fmt.Errorf("write operation forbidden")
 
+type HandlerContext = server.Context[State]
+
 type Handler struct {
 	Fs afero.Fs
 
@@ -26,7 +28,7 @@ type Handler struct {
 	AllowWrite bool
 }
 
-func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
+func (h *Handler) HandleOpenDir(ctx *HandlerContext, path string) bool {
 	log := slog.With(slog.String("path", path))
 
 	log.InfoContext(ctx, "Open dir")
@@ -43,39 +45,39 @@ func (h *Handler) HandleOpenDir(ctx *server.Context, path string) bool {
 		return false
 	}
 
-	if ctx.CwdHandle != nil {
-		if err := ctx.CwdHandle.Close(); err != nil {
-			log.WarnContext(ctx, "Close ctx.CwdHandle failed", logutil.ErrorAttr(err))
+	if ctx.State.CwdHandle != nil {
+		if err := ctx.State.CwdHandle.Close(); err != nil {
+			log.WarnContext(ctx, "Close ctx.State.CwdHandle failed", logutil.ErrorAttr(err))
 		}
-		ctx.CwdHandle = nil
+		ctx.State.CwdHandle = nil
 	}
 
-	ctx.CwdHandle = handle
+	ctx.State.CwdHandle = handle
 
 	// it's crucial to send "true" for directory and "false" for file
 	return info.IsDir()
 }
 
-func (h *Handler) HandleReadDirEntry(ctx *server.Context) fs.FileInfo {
+func (h *Handler) HandleReadDirEntry(ctx *HandlerContext) fs.FileInfo {
 	log := slog.Default()
 
 	log.InfoContext(ctx, "Read Dir Entry")
 
-	if ctx.CwdHandle == nil {
+	if ctx.State.CwdHandle == nil {
 		log.WarnContext(ctx, "No open dir")
 		return nil
 	}
 
 	for {
-		names, err := ctx.CwdHandle.Readdirnames(1)
+		names, err := ctx.State.CwdHandle.Readdirnames(1)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.WarnContext(ctx, "Readdirnames failed", logutil.ErrorAttr(err))
 			}
-			if err := ctx.CwdHandle.Close(); err != nil {
-				log.WarnContext(ctx, "Close ctx.CwdHandle failed", logutil.ErrorAttr(err))
+			if err := ctx.State.CwdHandle.Close(); err != nil {
+				log.WarnContext(ctx, "Close ctx.State.CwdHandle failed", logutil.ErrorAttr(err))
 			}
-			ctx.CwdHandle = nil
+			ctx.State.CwdHandle = nil
 			return nil
 		}
 
@@ -84,7 +86,7 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) fs.FileInfo {
 		}
 
 		// Stat to resolve symlink
-		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.CwdHandle.Name(), names[0]))
+		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), names[0]))
 		if err != nil {
 			log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
@@ -97,18 +99,18 @@ func (h *Handler) HandleReadDirEntry(ctx *server.Context) fs.FileInfo {
 	}
 }
 
-func (h *Handler) HandleReadDir(ctx *server.Context) []fs.FileInfo {
+func (h *Handler) HandleReadDir(ctx *HandlerContext) []fs.FileInfo {
 	log := slog.Default()
 
-	if ctx.CwdHandle == nil {
+	if ctx.State.CwdHandle == nil {
 		log.WarnContext(ctx, "Reading non-opened dir")
 		return []fs.FileInfo{}
 	}
 
-	log = log.With(slog.String("path", ctx.CwdHandle.Name()))
+	log = log.With(slog.String("path", ctx.State.CwdHandle.Name()))
 	log.InfoContext(ctx, "Read dir")
 
-	entries, err := ctx.CwdHandle.Readdir(-1)
+	entries, err := ctx.State.CwdHandle.Readdir(-1)
 	if err != nil {
 		log.WarnContext(ctx, "Read dir failed", logutil.ErrorAttr(err))
 		return []fs.FileInfo{}
@@ -118,7 +120,7 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []fs.FileInfo {
 	for _, entry := range entries {
 		if entry.Mode()&fs.ModeSymlink != 0 {
 			// Stat to resolve symlink
-			entry, err = h.Fs.Stat(filepath.Join(ctx.CwdHandle.Name(), entry.Name()))
+			entry, err = h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
 			if err != nil {
 				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
@@ -131,7 +133,7 @@ func (h *Handler) HandleReadDir(ctx *server.Context) []fs.FileInfo {
 	return files
 }
 
-func (h *Handler) HandleStatFile(ctx *server.Context, path string) (fs.FileInfo, error) {
+func (h *Handler) HandleStatFile(ctx *HandlerContext, path string) (fs.FileInfo, error) {
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Stat file")
 
@@ -147,59 +149,59 @@ func (h *Handler) HandleStatFile(ctx *server.Context, path string) (fs.FileInfo,
 	}
 }
 
-func (h *Handler) HandleOpenFile(ctx *server.Context, path string) error {
+func (h *Handler) HandleOpenFile(ctx *HandlerContext, path string) (fs.FileInfo, error) {
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Open R/O file")
 
-	if ctx.ROFile != nil {
-		if err := ctx.ROFile.Close(); err != nil {
+	if ctx.State.ROFile != nil {
+		if err := ctx.State.ROFile.Close(); err != nil {
 			log.WarnContext(ctx, "Close already opened R/O file failed", logutil.ErrorAttr(err))
 		}
 
-		ctx.ROFile = nil
+		ctx.State.ROFile = nil
 	}
 
 	f, err := h.Fs.Open(path)
 	if err != nil {
 		log.WarnContext(ctx, "Open r/o file failed", logutil.ErrorAttr(err))
-		return err
+		return nil, err
 	}
 
-	ctx.ROFile = f
+	ctx.State.ROFile = f
 
-	return nil
+	return f.Stat()
 }
 
-func (h *Handler) HandleCloseFile(ctx *server.Context) {
-	if ctx.ROFile == nil {
+func (h *Handler) HandleCloseFile(ctx *HandlerContext) {
+	if ctx.State.ROFile == nil {
 		return
 	}
 
 	log := slog.Default()
 	log.DebugContext(ctx, "Close R/O file")
 
-	if err := ctx.ROFile.Close(); err != nil {
+	if err := ctx.State.ROFile.Close(); err != nil {
 		log.WarnContext(ctx, "Close R/O file failed", logutil.ErrorAttr(err))
 	}
 }
 
-func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint64) server.LenReader {
+func (h *Handler) HandleReadFile(ctx *HandlerContext, limit uint32, offset uint64) server.LenReader {
 	log := slog.With(slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
 	log.DebugContext(ctx, "Read file")
 
-	if ctx.ROFile == nil {
+	if ctx.State.ROFile == nil {
 		log.WarnContext(ctx, "No file opened")
 		return &bytes.Buffer{}
 	}
 
-	if _, err := ctx.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
+	if _, err := ctx.State.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
 		log.WarnContext(ctx, "Seek failed", logutil.ErrorAttr(err))
 		return &bytes.Buffer{}
 	}
 
 	var buf bytes.Buffer
 
-	n, err := buf.ReadFrom(io.LimitReader(ctx.ROFile, int64(limit)))
+	n, err := buf.ReadFrom(io.LimitReader(ctx.State.ROFile, int64(limit)))
 	if err != nil {
 		log.ErrorContext(ctx, "Read failed", logutil.ErrorAttr(err))
 		return &bytes.Buffer{}
@@ -210,21 +212,21 @@ func (h *Handler) HandleReadFile(ctx *server.Context, limit uint32, offset uint6
 	return &buf
 }
 
-func (h *Handler) HandleReadFileCritical(ctx *server.Context, limit uint32, offset uint64) (io.Reader, error) {
+func (h *Handler) HandleReadFileCritical(ctx *HandlerContext, limit uint32, offset uint64) (io.Reader, error) {
 	slog.DebugContext(ctx, "Read file critical", slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
 
-	if ctx.ROFile == nil {
+	if ctx.State.ROFile == nil {
 		return nil, fmt.Errorf("no file opened")
 	}
 
-	if _, err := ctx.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
+	if _, err := ctx.State.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
 		return nil, fmt.Errorf("seek failed: %w", err)
 	}
 
-	return io.LimitReader(ctx.ROFile, int64(limit)), nil
+	return io.LimitReader(ctx.State.ROFile, int64(limit)), nil
 }
 
-func (h *Handler) HandleCreateFile(ctx *server.Context, path string) error {
+func (h *Handler) HandleCreateFile(ctx *HandlerContext, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Create file")
 
@@ -233,12 +235,12 @@ func (h *Handler) HandleCreateFile(ctx *server.Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if ctx.WOFile != nil {
-		if err := ctx.WOFile.Close(); err != nil {
+	if ctx.State.WOFile != nil {
+		if err := ctx.State.WOFile.Close(); err != nil {
 			log.WarnContext(ctx, "Close already opened W/O file failed", logutil.ErrorAttr(err))
 		}
 
-		ctx.WOFile = nil
+		ctx.State.WOFile = nil
 	}
 
 	// path is a directory -> closing file, just return
@@ -257,11 +259,11 @@ func (h *Handler) HandleCreateFile(ctx *server.Context, path string) error {
 		return err
 	}
 
-	ctx.WOFile = f
+	ctx.State.WOFile = f
 	return nil
 }
 
-func (h *Handler) HandleWriteFile(ctx *server.Context, data io.Reader) (int32, error) {
+func (h *Handler) HandleWriteFile(ctx *HandlerContext, data io.Reader) (int32, error) {
 	slog.DebugContext(ctx, "Write file")
 
 	if !h.AllowWrite {
@@ -269,12 +271,12 @@ func (h *Handler) HandleWriteFile(ctx *server.Context, data io.Reader) (int32, e
 		return 0, ErrWriteForbidden
 	}
 
-	if ctx.WOFile == nil {
+	if ctx.State.WOFile == nil {
 		slog.WarnContext(ctx, "File for writing was not opened")
 		return 0, fmt.Errorf("file for writing was not opened")
 	}
 
-	written, err := h.Copier.Copy(ctx.WOFile, data)
+	written, err := h.Copier.Copy(ctx.State.WOFile, data)
 	if err != nil {
 		slog.WarnContext(ctx, "Write data failed", logutil.ErrorAttr(err))
 		return 0, err
@@ -285,7 +287,7 @@ func (h *Handler) HandleWriteFile(ctx *server.Context, data io.Reader) (int32, e
 	return int32(written), nil
 }
 
-func (h *Handler) HandleDeleteFile(ctx *server.Context, path string) error {
+func (h *Handler) HandleDeleteFile(ctx *HandlerContext, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Delete file")
 
@@ -302,7 +304,7 @@ func (h *Handler) HandleDeleteFile(ctx *server.Context, path string) error {
 	return nil
 }
 
-func (h *Handler) HandleMkdir(ctx *server.Context, path string) error {
+func (h *Handler) HandleMkdir(ctx *HandlerContext, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Create directory")
 
@@ -319,7 +321,7 @@ func (h *Handler) HandleMkdir(ctx *server.Context, path string) error {
 	return nil
 }
 
-func (h *Handler) HandleRmdir(ctx *server.Context, path string) error {
+func (h *Handler) HandleRmdir(ctx *HandlerContext, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Remove directory")
 
@@ -339,7 +341,7 @@ func (h *Handler) HandleRmdir(ctx *server.Context, path string) error {
 // fsOnly needed to detach all "optional" interfaces like afero.Lstater.
 type fsOnly struct{ afero.Fs }
 
-func (h *Handler) HandleGetDirSize(ctx *server.Context, path string) (int64, error) {
+func (h *Handler) HandleGetDirSize(ctx *HandlerContext, path string) (int64, error) {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Get directory size")
 
