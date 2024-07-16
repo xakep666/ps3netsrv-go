@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 
 var ErrWriteForbidden = fmt.Errorf("write operation forbidden")
 
-type HandlerContext = server.Context[State]
+type Context = server.Context[State]
 
 type Handler struct {
 	Fs afero.Fs
@@ -28,7 +28,7 @@ type Handler struct {
 	AllowWrite bool
 }
 
-func (h *Handler) HandleOpenDir(ctx *HandlerContext, path string) bool {
+func (h *Handler) HandleOpenDir(ctx *Context, path string) bool {
 	log := slog.With(slog.String("path", path))
 
 	log.InfoContext(ctx, "Open dir")
@@ -58,7 +58,7 @@ func (h *Handler) HandleOpenDir(ctx *HandlerContext, path string) bool {
 	return info.IsDir()
 }
 
-func (h *Handler) HandleReadDirEntry(ctx *HandlerContext) fs.FileInfo {
+func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 	log := slog.Default()
 
 	log.InfoContext(ctx, "Read Dir Entry")
@@ -99,7 +99,7 @@ func (h *Handler) HandleReadDirEntry(ctx *HandlerContext) fs.FileInfo {
 	}
 }
 
-func (h *Handler) HandleReadDir(ctx *HandlerContext) []fs.FileInfo {
+func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
 	log := slog.Default()
 
 	if ctx.State.CwdHandle == nil {
@@ -133,7 +133,7 @@ func (h *Handler) HandleReadDir(ctx *HandlerContext) []fs.FileInfo {
 	return files
 }
 
-func (h *Handler) HandleStatFile(ctx *HandlerContext, path string) (fs.FileInfo, error) {
+func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error) {
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Stat file")
 
@@ -149,7 +149,7 @@ func (h *Handler) HandleStatFile(ctx *HandlerContext, path string) (fs.FileInfo,
 	}
 }
 
-func (h *Handler) HandleOpenFile(ctx *HandlerContext, path string) (fs.FileInfo, error) {
+func (h *Handler) HandleOpenFile(ctx *Context, path string) (fs.FileInfo, error) {
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Open R/O file")
 
@@ -172,7 +172,7 @@ func (h *Handler) HandleOpenFile(ctx *HandlerContext, path string) (fs.FileInfo,
 	return f.Stat()
 }
 
-func (h *Handler) HandleCloseFile(ctx *HandlerContext) {
+func (h *Handler) HandleCloseFile(ctx *Context) {
 	if ctx.State.ROFile == nil {
 		return
 	}
@@ -185,48 +185,48 @@ func (h *Handler) HandleCloseFile(ctx *HandlerContext) {
 	}
 }
 
-func (h *Handler) HandleReadFile(ctx *HandlerContext, limit uint32, offset uint64) server.LenReader {
+func (h *Handler) HandleReadFile(ctx *Context, limit uint32, offset uint64, wr server.ReadFileResponseWriter) error {
 	log := slog.With(slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
 	log.DebugContext(ctx, "Read file")
 
 	if ctx.State.ROFile == nil {
-		log.WarnContext(ctx, "No file opened")
-		return &bytes.Buffer{}
+		return fmt.Errorf("no file opened")
 	}
 
 	if _, err := ctx.State.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
-		log.WarnContext(ctx, "Seek failed", logutil.ErrorAttr(err))
-		return &bytes.Buffer{}
+		return fmt.Errorf("seek failed: %w", err)
 	}
 
 	var buf bytes.Buffer
 
 	n, err := buf.ReadFrom(io.LimitReader(ctx.State.ROFile, int64(limit)))
 	if err != nil {
-		log.ErrorContext(ctx, "Read failed", logutil.ErrorAttr(err))
-		return &bytes.Buffer{}
+		return fmt.Errorf("read failed: %w", err)
 	}
 
 	log.DebugContext(ctx, "Read file", slog.Int64("read", n))
 
-	return &buf
+	wr.WriteHeader(int32(n))
+	_, err = buf.WriteTo(wr)
+	return err
 }
 
-func (h *Handler) HandleReadFileCritical(ctx *HandlerContext, limit uint32, offset uint64) (io.Reader, error) {
+func (h *Handler) HandleReadFileCritical(ctx *Context, limit uint32, offset uint64, w io.Writer) error {
 	slog.DebugContext(ctx, "Read file critical", slog.Uint64("limit", uint64(limit)), slog.Uint64("offset", offset))
 
 	if ctx.State.ROFile == nil {
-		return nil, fmt.Errorf("no file opened")
+		return fmt.Errorf("no file opened")
 	}
 
 	if _, err := ctx.State.ROFile.Seek(int64(offset), io.SeekStart); err != nil {
-		return nil, fmt.Errorf("seek failed: %w", err)
+		return fmt.Errorf("seek failed: %w", err)
 	}
 
-	return io.LimitReader(ctx.State.ROFile, int64(limit)), nil
+	_, err := h.Copier.Copy(w, io.LimitReader(ctx.State.ROFile, int64(limit)))
+	return err
 }
 
-func (h *Handler) HandleCreateFile(ctx *HandlerContext, path string) error {
+func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Create file")
 
@@ -263,7 +263,7 @@ func (h *Handler) HandleCreateFile(ctx *HandlerContext, path string) error {
 	return nil
 }
 
-func (h *Handler) HandleWriteFile(ctx *HandlerContext, data io.Reader) (int32, error) {
+func (h *Handler) HandleWriteFile(ctx *Context, data io.Reader) (int32, error) {
 	slog.DebugContext(ctx, "Write file")
 
 	if !h.AllowWrite {
@@ -287,7 +287,7 @@ func (h *Handler) HandleWriteFile(ctx *HandlerContext, data io.Reader) (int32, e
 	return int32(written), nil
 }
 
-func (h *Handler) HandleDeleteFile(ctx *HandlerContext, path string) error {
+func (h *Handler) HandleDeleteFile(ctx *Context, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Delete file")
 
@@ -304,7 +304,7 @@ func (h *Handler) HandleDeleteFile(ctx *HandlerContext, path string) error {
 	return nil
 }
 
-func (h *Handler) HandleMkdir(ctx *HandlerContext, path string) error {
+func (h *Handler) HandleMkdir(ctx *Context, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Create directory")
 
@@ -321,7 +321,7 @@ func (h *Handler) HandleMkdir(ctx *HandlerContext, path string) error {
 	return nil
 }
 
-func (h *Handler) HandleRmdir(ctx *HandlerContext, path string) error {
+func (h *Handler) HandleRmdir(ctx *Context, path string) error {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Remove directory")
 
@@ -341,7 +341,7 @@ func (h *Handler) HandleRmdir(ctx *HandlerContext, path string) error {
 // fsOnly needed to detach all "optional" interfaces like afero.Lstater.
 type fsOnly struct{ afero.Fs }
 
-func (h *Handler) HandleGetDirSize(ctx *HandlerContext, path string) (int64, error) {
+func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Get directory size")
 

@@ -10,22 +10,23 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/xakep666/ps3netsrv-go/internal/copier"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
 )
 
-type Server struct {
-	Handler     Handler
-	Copier      *copier.Copier
+type Server[StateT any] struct {
+	Handler     Handler[StateT]
 	ReadTimeout time.Duration
 
 	// ConnContext optionally specifies a function that modifies
 	// the context used for a new connection c.
 	ConnContext func(ctx context.Context, c net.Conn) context.Context
+
+	// Logger is the logger for the server.
+	Logger *slog.Logger
 }
 
-func (s *Server) Serve(ln net.Listener) error {
+func (s *Server[StateT]) Serve(ln net.Listener) error {
 	defer ln.Close()
 
 	for {
@@ -38,7 +39,7 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 }
 
-func (s *Server) setConnReadDeadline(conn net.Conn) error {
+func (s *Server[StateT]) setConnReadDeadline(conn net.Conn) error {
 	if s.ReadTimeout <= 0 {
 		return nil
 	}
@@ -46,7 +47,7 @@ func (s *Server) setConnReadDeadline(conn net.Conn) error {
 	return conn.SetReadDeadline(time.Now().Add(s.ReadTimeout))
 }
 
-func (s *Server) deriveConnContext(conn net.Conn) context.Context {
+func (s *Server[StateT]) deriveConnContext(conn net.Conn) context.Context {
 	if s.ConnContext == nil {
 		return context.Background()
 	}
@@ -54,22 +55,22 @@ func (s *Server) deriveConnContext(conn net.Conn) context.Context {
 	return s.ConnContext(context.Background(), conn)
 }
 
-func (s *Server) serveConn(conn net.Conn) {
-	ctx := &Context{
+func (s *Server[StateT]) serveConn(conn net.Conn) {
+	ctx := &Context[StateT]{
 		RemoteAddr: conn.RemoteAddr(),
 		rd:         proto.Reader{Reader: conn},
-		wr:         proto.Writer{Writer: conn, Copier: s.Copier},
+		wr:         proto.Writer{Writer: conn},
 	}
 	ctx.Context, ctx.cancel = context.WithCancel(s.deriveConnContext(conn))
 
-	log := slog.Default().With(logutil.StringerAttr("remote", conn.RemoteAddr()))
+	log := s.Logger.With(logutil.StringerAttr("remote", conn.RemoteAddr()))
 
 	log.Info("Client connected")
 	defer log.Info("Client disconnected")
 
 	defer func() {
 		if err := ctx.Close(); err != nil {
-			log.WarnContext(ctx, "State closed with errors", logutil.ErrorAttr(err))
+			log.WarnContext(ctx, "Context closed with errors", logutil.ErrorAttr(err))
 		}
 	}()
 
@@ -104,7 +105,7 @@ func (s *Server) serveConn(conn net.Conn) {
 	}
 }
 
-func (s *Server) handleCommand(opCode proto.OpCode, ctx *Context) error {
+func (s *Server[StateT]) handleCommand(opCode proto.OpCode, ctx *Context[StateT]) error {
 	switch opCode {
 	case proto.CmdOpenDir:
 		return s.handleOpenDir(ctx)
@@ -137,7 +138,7 @@ func (s *Server) handleCommand(opCode proto.OpCode, ctx *Context) error {
 	}
 }
 
-func (s *Server) handleOpenDir(ctx *Context) error {
+func (s *Server[StateT]) handleOpenDir(ctx *Context[StateT]) error {
 	// here we should check that we can read requested dir and set state if it's true
 	dirPath, err := ctx.rd.ReadOpenDir()
 	if err != nil {
@@ -147,15 +148,15 @@ func (s *Server) handleOpenDir(ctx *Context) error {
 	return ctx.wr.SendOpenDirResult(s.Handler.HandleOpenDir(ctx, dirPath))
 }
 
-func (s *Server) handleReadDirEntry(ctx *Context) error {
+func (s *Server[StateT]) handleReadDirEntry(ctx *Context[StateT]) error {
 	return ctx.wr.SendReadDirEntryResult(s.Handler.HandleReadDirEntry(ctx))
 }
 
-func (s *Server) handleReadDir(ctx *Context) error {
+func (s *Server[StateT]) handleReadDir(ctx *Context[StateT]) error {
 	return ctx.wr.SendReadDirResult(s.Handler.HandleReadDir(ctx))
 }
 
-func (s *Server) handleStatFile(ctx *Context) error {
+func (s *Server[StateT]) handleStatFile(ctx *Context[StateT]) error {
 	filePath, err := ctx.rd.ReadStatFile()
 	if err != nil {
 		return fmt.Errorf("read stat path failed: %w", err)
@@ -169,7 +170,7 @@ func (s *Server) handleStatFile(ctx *Context) error {
 	return ctx.wr.SendStatFileResult(fi)
 }
 
-func (s *Server) handleOpenFile(ctx *Context) error {
+func (s *Server[StateT]) handleOpenFile(ctx *Context[StateT]) error {
 	// Here can be some special paths:
 	// * CLOSEFILE (in original code it's just send success with closing already opened file if present)
 
@@ -185,37 +186,51 @@ func (s *Server) handleOpenFile(ctx *Context) error {
 		return ctx.wr.SendOpenFileForCLOSEFILE()
 	}
 
-	if err := s.Handler.HandleOpenFile(ctx, filePath); err != nil {
+	fi, err := s.Handler.HandleOpenFile(ctx, filePath)
+	if err != nil {
 		return ctx.wr.SendOpenFileError()
 	}
 
-	return ctx.wr.SendOpenFileResult(ctx.State.ROFile)
+	return ctx.wr.SendOpenFileResult(fi)
 }
 
-func (s *Server) handleReadFile(ctx *Context) error {
+type readFileResponseWriter struct {
+	dataLength int32
+	upstream   io.Writer
+}
+
+func (w *readFileResponseWriter) WriteHeader(length int32) { w.dataLength = length }
+
+func (w *readFileResponseWriter) Write(p []byte) (n int, err error) {
+	if w.dataLength <= 0 {
+		return 0, fmt.Errorf("WriteHeader wasn't called")
+	}
+
+	return w.upstream.Write(p)
+}
+
+func (s *Server[StateT]) handleReadFile(ctx *Context[StateT]) error {
 	toRead, off, err := ctx.rd.ReadReadFile()
 	if err != nil {
 		return fmt.Errorf("read read file params failed: %w", err)
 	}
 
-	return ctx.wr.SendReadFileResult(s.Handler.HandleReadFile(ctx, toRead, off))
+	return s.Handler.HandleReadFile(ctx, toRead, off, &readFileResponseWriter{
+		dataLength: -1,
+		upstream:   ctx.wr.Writer,
+	})
 }
 
-func (s *Server) handleReadFileCritical(ctx *Context) error {
+func (s *Server[StateT]) handleReadFileCritical(ctx *Context[StateT]) error {
 	toRead, off, err := ctx.rd.ReadReadFileCritical()
 	if err != nil {
 		return fmt.Errorf("read read file critical params failed: %w", err)
 	}
 
-	rd, err := s.Handler.HandleReadFileCritical(ctx, toRead, off)
-	if err != nil {
-		return fmt.Errorf("read file critical failed: %w", err)
-	}
-
-	return ctx.wr.SendReadFileCriticalResult(rd)
+	return s.Handler.HandleReadFileCritical(ctx, toRead, off, ctx.wr.Writer)
 }
 
-func (s *Server) handleCreateFile(ctx *Context) error {
+func (s *Server[StateT]) handleCreateFile(ctx *Context[StateT]) error {
 	path, err := ctx.rd.ReadCreateFile()
 	if err != nil {
 		return fmt.Errorf("read file to create path failed: %w", err)
@@ -228,7 +243,7 @@ func (s *Server) handleCreateFile(ctx *Context) error {
 	return ctx.wr.SendCreateFileResult()
 }
 
-func (s *Server) handleWriteFile(ctx *Context) error {
+func (s *Server[StateT]) handleWriteFile(ctx *Context[StateT]) error {
 	data, err := ctx.rd.ReadWriteFile()
 	if err != nil {
 		return fmt.Errorf("read file data to write failed: %w", err)
@@ -242,7 +257,7 @@ func (s *Server) handleWriteFile(ctx *Context) error {
 	return ctx.wr.SendWriteFileResult(written)
 }
 
-func (s *Server) handleDeleteFile(ctx *Context) error {
+func (s *Server[StateT]) handleDeleteFile(ctx *Context[StateT]) error {
 	path, err := ctx.rd.ReadDeleteFile()
 	if err != nil {
 		return fmt.Errorf("read file to delete path failed: %w", err)
@@ -255,7 +270,7 @@ func (s *Server) handleDeleteFile(ctx *Context) error {
 	return ctx.wr.SendDeleteFileResult()
 }
 
-func (s *Server) handleMkdir(ctx *Context) error {
+func (s *Server[StateT]) handleMkdir(ctx *Context[StateT]) error {
 	path, err := ctx.rd.ReadMkdir()
 	if err != nil {
 		return fmt.Errorf("read directory to create path failed: %w", err)
@@ -268,7 +283,7 @@ func (s *Server) handleMkdir(ctx *Context) error {
 	return ctx.wr.SendMkdirResult()
 }
 
-func (s *Server) handleRmdir(ctx *Context) error {
+func (s *Server[StateT]) handleRmdir(ctx *Context[StateT]) error {
 	path, err := ctx.rd.ReadRmdir()
 	if err != nil {
 		return fmt.Errorf("read directory to remove path failed: %w", err)
@@ -281,7 +296,7 @@ func (s *Server) handleRmdir(ctx *Context) error {
 	return ctx.wr.SendMkdirResult()
 }
 
-func (s *Server) handleGetDirSize(ctx *Context) error {
+func (s *Server[StateT]) handleGetDirSize(ctx *Context[StateT]) error {
 	path, err := ctx.rd.ReadGetDirSize()
 	if err != nil {
 		return fmt.Errorf("read directory to calculate size path failed: %w", err)

@@ -4,17 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-
-	"github.com/spf13/afero"
-
-	"github.com/xakep666/ps3netsrv-go/internal/copier"
 )
 
 type Writer struct {
 	io.Writer
-
-	Copier *copier.Copier
 }
 
 func (w *Writer) SendOpenDirResult(success bool) error {
@@ -111,12 +106,7 @@ func (w *Writer) SendStatFileError() error {
 	return nil
 }
 
-func (w *Writer) SendOpenFileResult(f afero.File) error {
-	info, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat failed: %w", err)
-	}
-
+func (w *Writer) SendOpenFileResult(info fs.FileInfo) error {
 	result := OpenFileResult{
 		FileSize: info.Size(),
 		ModTime:  uint64(info.ModTime().UTC().Unix()),
@@ -241,29 +231,10 @@ func (w *Writer) SendGetDirectorySizeError() error {
 	return nil
 }
 
-type LenReader interface {
-	io.Reader
-
-	Len() int
-}
-
-func (w *Writer) SendReadFileResult(data LenReader) error {
-	if err := w.sendResult(ReadFileResult{BytesRead: int32(data.Len())}); err != nil {
+// SendReadFileResultLen sends only size of data that follows after this message
+func (w *Writer) SendReadFileResultLen(dataLen int32) error {
+	if err := w.sendResult(ReadFileResult{BytesRead: dataLen}); err != nil {
 		return fmt.Errorf("sendResult failed: %w", err)
-	}
-
-	_, err := w.Copier.Copy(w.Writer, data)
-	if err != nil {
-		return fmt.Errorf("buffer write failed: %w", err)
-	}
-
-	return nil
-}
-
-func (w *Writer) SendReadFileCriticalResult(data io.Reader) error {
-	_, err := w.Copier.Copy(w.Writer, data)
-	if err != nil {
-		return fmt.Errorf("buffer write failed: %w", err)
 	}
 
 	return nil
