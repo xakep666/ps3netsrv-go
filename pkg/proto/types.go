@@ -82,7 +82,7 @@ type OpenDirResult struct {
 	Result int32
 }
 
-// ReadDirEntryCommand contains data for CmdReadDir, CmdReadDirEntry.
+// ReadDirEntryCommand contains data for CmdReadDir, CmdReadDirEntry, CmdReadDirEntryV2.
 type ReadDirEntryCommand struct {
 }
 
@@ -110,6 +110,16 @@ type ReadDirEntryResult struct {
 	IsDirectory bool
 }
 
+// ReadDirEntryV2Result acts like ReadDirEntryResult but for CmdReadDirEntryV2.
+type ReadDirEntryV2Result struct {
+	FileSize    int64
+	ModTime     uint64
+	ChangeTime  uint64
+	AccessTime  uint64
+	FilenameLen uint16
+	IsDirectory bool
+}
+
 // StatFileCommand contains data for CmdStatFile.
 type StatFileCommand struct {
 	// FpLen is a length of path to read further. Path is absolute here.
@@ -121,8 +131,8 @@ type StatFileResult struct {
 	// FileSize contains file size for files, 0 for directories and -1 for error.
 	FileSize    int64
 	ModTime     uint64
-	AccessTime  uint64
 	ChangeTime  uint64
+	AccessTime  uint64
 	IsDirectory bool
 }
 

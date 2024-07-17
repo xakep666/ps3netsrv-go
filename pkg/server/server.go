@@ -121,6 +121,8 @@ func (s *Server[StateT]) handleCommand(opCode proto.OpCode, ctx *Context[StateT]
 		return s.handleReadFileCritical(ctx)
 	case proto.CmdReadDirEntry:
 		return s.handleReadDirEntry(ctx)
+	case proto.CmdReadDirEntryV2:
+		return s.handleReadDirEntryV2(ctx)
 	case proto.CmdCreateFile:
 		return s.handleCreateFile(ctx)
 	case proto.CmdWriteFile:
@@ -150,6 +152,10 @@ func (s *Server[StateT]) handleOpenDir(ctx *Context[StateT]) error {
 
 func (s *Server[StateT]) handleReadDirEntry(ctx *Context[StateT]) error {
 	return ctx.wr.SendReadDirEntryResult(s.Handler.HandleReadDirEntry(ctx))
+}
+
+func (s *Server[StateT]) handleReadDirEntryV2(ctx *Context[StateT]) error {
+	return ctx.wr.SendReadDirEntryV2Result(s.Handler.HandleReadDirEntry(ctx))
 }
 
 func (s *Server[StateT]) handleReadDir(ctx *Context[StateT]) error {

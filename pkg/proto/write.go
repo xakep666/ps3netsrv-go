@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 )
 
 type Writer struct {
@@ -21,7 +20,7 @@ func (w *Writer) SendOpenDirResult(success bool) error {
 	return w.sendResult(res)
 }
 
-func (w *Writer) SendReadDirResult(entries []os.FileInfo) error {
+func (w *Writer) SendReadDirResult(entries []fs.FileInfo) error {
 	err := w.sendResult(ReadDirResult{Size: int64(len(entries))})
 	if err != nil {
 		return fmt.Errorf("sendResult with size failed: %w", err)
@@ -46,7 +45,7 @@ func (w *Writer) SendReadDirResult(entries []os.FileInfo) error {
 	return nil
 }
 
-func (w *Writer) SendReadDirEntryResult(entry os.FileInfo) error {
+func (w *Writer) SendReadDirEntryResult(entry fs.FileInfo) error {
 	dirEntryResult := ReadDirEntryResult{}
 
 	if entry == nil {
@@ -64,11 +63,11 @@ func (w *Writer) SendReadDirEntryResult(entry os.FileInfo) error {
 
 	err := w.sendResult(dirEntryResult)
 	if err != nil {
-		return fmt.Errorf("sendResult for %s failed: %w", entry.Name(), err)
+		return fmt.Errorf("sendResult for %s failed: %w", entry, err)
 	}
 
-	if dirEntryResult.FilenameLen > 0 {
-		err := w.sendResult([]byte(entry.Name()))
+	if dirEntryResult.FilenameLen > 0 && entry != nil {
+		err := w.sendResult(entry.Name())
 		if err != nil {
 			return fmt.Errorf("sendResult for %s failed: %w", entry.Name(), err)
 		}
@@ -77,7 +76,44 @@ func (w *Writer) SendReadDirEntryResult(entry os.FileInfo) error {
 	return nil
 }
 
-func (w *Writer) SendStatFileResult(entry os.FileInfo) error {
+func (w *Writer) SendReadDirEntryV2Result(entry fs.FileInfo) error {
+	dirEntryResult := ReadDirEntryV2Result{}
+
+	if entry == nil {
+		dirEntryResult.FileSize = -1
+	} else {
+		dirEntryResult.FilenameLen = uint16(len(entry.Name()))
+
+		// TODO: fill AccessTime, ChangeTime using entry.Sys() for different platforms
+		dirEntryResult.ModTime = uint64(entry.ModTime().UTC().Unix())
+		dirEntryResult.ChangeTime = uint64(entry.ModTime().UTC().Unix())
+		dirEntryResult.AccessTime = uint64(entry.ModTime().UTC().Unix())
+
+		if entry.IsDir() {
+			dirEntryResult.FileSize = 0
+			dirEntryResult.IsDirectory = true
+		} else {
+			dirEntryResult.FileSize = entry.Size()
+			dirEntryResult.IsDirectory = false
+		}
+	}
+
+	err := w.sendResult(dirEntryResult)
+	if err != nil {
+		return fmt.Errorf("sendResult for %s failed: %w", entry, err)
+	}
+
+	if dirEntryResult.FilenameLen > 0 && entry != nil {
+		err := w.sendResult(entry.Name())
+		if err != nil {
+			return fmt.Errorf("sendResult for %s failed: %w", entry.Name(), err)
+		}
+	}
+
+	return nil
+}
+
+func (w *Writer) SendStatFileResult(entry fs.FileInfo) error {
 	modTime := uint64(entry.ModTime().UTC().Unix())
 	result := StatFileResult{
 		ModTime:     modTime,
@@ -241,6 +277,14 @@ func (w *Writer) SendReadFileResultLen(dataLen int32) error {
 }
 
 func (w *Writer) sendResult(data interface{}) error {
+	// we can send string directly
+	if str, ok := data.(string); ok {
+		_, err := io.WriteString(w.Writer, str)
+		if err != nil {
+			return fmt.Errorf("io.WriteString failed: %w", err)
+		}
+	}
+
 	err := binary.Write(w.Writer, binary.BigEndian, data)
 	if err != nil {
 		return fmt.Errorf("binary.Write failed: %w", err)
