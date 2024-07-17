@@ -40,7 +40,10 @@ func sfoField(f afero.File, field string) (string, error) {
 		return "", fmt.Errorf("bad sfo magic: %s", hdr.Magic)
 	}
 
-	var idxEntry *sfoIndexTableEntry
+	var (
+		idxEntry *sfoIndexTableEntry
+		br       bufio.Reader
+	)
 
 	for i := uint32(0); i < hdr.TableEntriesCount; i++ {
 		var e sfoIndexTableEntry
@@ -62,7 +65,8 @@ func sfoField(f afero.File, field string) (string, error) {
 			return "", fmt.Errorf("failed to seek to key at %d: %w", keyOff, err)
 		}
 
-		key, err := bufio.NewReader(f).ReadBytes(0)
+		br.Reset(f)
+		key, err := br.ReadBytes(0)
 		if err != nil {
 			return "", fmt.Errorf("failed to read key at %d: %w", keyOff, err)
 		}

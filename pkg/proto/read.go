@@ -1,11 +1,11 @@
 package proto
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 )
 
 type Reader struct {
@@ -187,21 +187,21 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 
 // readCommandTail reads remaining data of command.
 func (r *Reader) readCommandTail(tail interface{}) error {
-	err := binary.Read(bytes.NewReader(r.cmd.Data[:]), binary.BigEndian, tail)
+	_, err := binary.Decode(r.cmd.Data[:], binary.BigEndian, tail)
 	if err != nil {
-		return fmt.Errorf("binary.Read failed: %w", err)
+		return fmt.Errorf("binary.Decode failed: %w", err)
 	}
 
 	return nil
 }
 
 func (r *Reader) readStringN(size uint16) (string, error) {
-	buf := make([]byte, size)
+	var buf strings.Builder
 
-	_, err := io.ReadFull(r, buf)
+	_, err := io.CopyN(&buf, r, int64(size))
 	if err != nil {
 		return "", fmt.Errorf("io.ReadFull failed: %w", err)
 	}
 
-	return string(buf), nil
+	return buf.String(), nil
 }

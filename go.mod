@@ -1,6 +1,6 @@
 module github.com/xakep666/ps3netsrv-go
 
-go 1.21
+go 1.23
 
 require (
 	github.com/alecthomas/kong v0.8.1

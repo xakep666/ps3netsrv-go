@@ -73,6 +73,7 @@ type VirtualISO struct {
 	padAreaStart sizeBytes
 	padAreaSize  sizeBytes
 	fsBuf        iso9660encoder // binary-encoded filesystem structures
+	files        filesList      // ordered by location list of files to read from fs
 	offset       sizeBytes      // used during Read and Seek
 }
 
@@ -202,6 +203,9 @@ func (viso *VirtualISO) buildFSStructures(volumeName string) error {
 	viso.pathTable.fixLBA(isoLBA)
 	viso.pathTableJoliet.fixLBA(jolietLBA)
 
+	// finally collect flat ordered by rLBA files list
+	viso.files = viso.rootDir.collectFiles()
+
 	return nil
 }
 
@@ -224,11 +228,11 @@ func (viso *VirtualISO) scanDirectory() error {
 			return fmt.Errorf("%s is not a dir", queue[i])
 		}
 
-		viso.rootDir = append(viso.rootDir, dirItem{
+		dirItem := dirItem{
 			path:    queue[i],
 			name:    stat.Name(),
 			modTime: stat.ModTime(),
-		})
+		}
 
 		items, err := dir.Readdirnames(-1)
 		if err != nil {
@@ -247,7 +251,7 @@ func (viso *VirtualISO) scanDirectory() error {
 				continue
 			}
 
-			fi := fileItem{
+			fi := directoryFile{
 				path:    fullPath,
 				name:    itemStat.Name(),
 				size:    sizeBytes(itemStat.Size()),
@@ -255,10 +259,11 @@ func (viso *VirtualISO) scanDirectory() error {
 				modTime: itemStat.ModTime(),
 			}
 
-			viso.rootDir[len(viso.rootDir)-1].files = append(viso.rootDir[len(viso.rootDir)-1].files, fi)
-
+			dirItem.files = append(dirItem.files, fi)
 			viso.filesSizeSectors += fi.size.sectors()
 		}
+
+		viso.rootDir = append(viso.rootDir, dirItem)
 	}
 
 	return nil
@@ -659,12 +664,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 
 	// read files
 	if offset < viso.padAreaStart {
-		for _, fileItem := range viso.rootDir.filesToRead(remain, offset) {
-			f, err := fileItem.openOnDemand(viso.fs)
-			if err != nil {
-				return read, fmt.Errorf("failed to open %s: %w", fileItem.path, err)
-			}
-
+		for fileItem := range viso.files.filesToRead(remain, offset) {
 			if offset < fileItem.rLBA.bytes() {
 				return read, fmt.Errorf("file %s location (%d) greater than offset (%d)",
 					fileItem.path, fileItem.rLBA.bytes(), offset)
@@ -673,6 +673,11 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 			if offset >= fileItem.rLBA.bytes()+fileItem.size.sectors().bytes() {
 				return read, fmt.Errorf("offset (%d) greater than padded file %s location(%d)+size(%d)",
 					offset, fileItem.path, fileItem.rLBA.bytes(), fileItem.size.sectors().bytes())
+			}
+
+			f, err := fileItem.openOnDemand(viso.fs)
+			if err != nil {
+				return read, fmt.Errorf("failed to open %s: %w", fileItem.path, err)
 			}
 
 			fileOffset := offset - fileItem.rLBA.bytes()
@@ -798,11 +803,9 @@ func (viso *VirtualISO) Close() error {
 
 	var errs []error
 	viso.isClosed = true
-	for i := range viso.rootDir {
-		for j := range viso.rootDir[i].files {
-			if err := viso.rootDir[i].files[j].closeOpened(); err != nil {
-				errs = append(errs, fmt.Errorf("file %s close failed: %w", viso.rootDir[i].files[j].path, err))
-			}
+	for i := range viso.files {
+		if err := viso.files[i].closeOpened(); err != nil {
+			errs = append(errs, fmt.Errorf("file %s close failed: %w", viso.files[i].path, err))
 		}
 	}
 
