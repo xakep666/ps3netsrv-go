@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/alecthomas/kong v0.8.1
+	github.com/djherbis/times v1.6.0
 	github.com/docker/go-units v0.5.0
 	github.com/lmittmann/tint v1.0.3
 	github.com/mattn/go-colorable v0.1.13
@@ -12,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.8.2
 	golang.org/x/net v0.19.0
 	golang.org/x/sync v0.5.0
-	golang.org/x/sys v0.15.0
+	golang.org/x/sys v0.22.0
 	golang.org/x/text v0.14.0
 	gopkg.in/ini.v1 v1.67.0
 )

@@ -5,10 +5,27 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"time"
 )
 
 type Writer struct {
 	io.Writer
+}
+
+// AccessTimeFileInfo may be implemented by fs.FileInfo to provide access time information
+type AccessTimeFileInfo interface {
+	fs.FileInfo
+
+	AccessTime() time.Time
+}
+
+// AccessChangeTimeFileInfo may be implemented by fs.FileInfo to provide access and change time information.
+// This interface hierarchy used because AccessTime supported on more platforms than ChangeTime and all platforms
+// having ChangeTime also have AccessTime.
+type AccessChangeTimeFileInfo interface {
+	AccessTimeFileInfo
+
+	ChangeTime() time.Time
 }
 
 func (w *Writer) SendOpenDirResult(success bool) error {
@@ -84,10 +101,7 @@ func (w *Writer) SendReadDirEntryV2Result(entry fs.FileInfo) error {
 	} else {
 		dirEntryResult.FilenameLen = uint16(len(entry.Name()))
 
-		// TODO: fill AccessTime, ChangeTime using entry.Sys() for different platforms
-		dirEntryResult.ModTime = uint64(entry.ModTime().UTC().Unix())
-		dirEntryResult.ChangeTime = uint64(entry.ModTime().UTC().Unix())
-		dirEntryResult.AccessTime = uint64(entry.ModTime().UTC().Unix())
+		dirEntryResult.ModTime, dirEntryResult.ChangeTime, dirEntryResult.AccessTime = fileInfoTimes(entry)
 
 		if entry.IsDir() {
 			dirEntryResult.FileSize = 0
@@ -114,18 +128,13 @@ func (w *Writer) SendReadDirEntryV2Result(entry fs.FileInfo) error {
 }
 
 func (w *Writer) SendStatFileResult(entry fs.FileInfo) error {
-	modTime := uint64(entry.ModTime().UTC().Unix())
 	result := StatFileResult{
-		ModTime:     modTime,
-		AccessTime:  modTime,
-		ChangeTime:  modTime,
 		IsDirectory: entry.IsDir(),
 	}
+	result.ModTime, result.ChangeTime, result.AccessTime = fileInfoTimes(entry)
 	if !entry.IsDir() {
 		result.FileSize = entry.Size()
 	}
-
-	// TODO: fill AccessTime, ChangeTime using entry.Sys() for different platforms
 
 	if err := w.sendResult(result); err != nil {
 		return fmt.Errorf("sendResult failed: %w", err)
@@ -291,4 +300,20 @@ func (w *Writer) sendResult(data interface{}) error {
 	}
 
 	return nil
+}
+
+func fileInfoTimes(info fs.FileInfo) (mtime, ctime, atime uint64) {
+	mtime = uint64(info.ModTime().UTC().Unix())
+	atime = mtime
+	ctime = mtime
+
+	if accessTime, ok := info.(AccessTimeFileInfo); ok {
+		atime = uint64(accessTime.AccessTime().UTC().Unix())
+	}
+
+	if changeTime, ok := info.(AccessChangeTimeFileInfo); ok {
+		ctime = uint64(changeTime.ChangeTime().UTC().Unix())
+	}
+
+	return
 }
