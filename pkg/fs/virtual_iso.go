@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -213,34 +214,36 @@ func (viso *VirtualISO) scanDirectory() error {
 	// scan directory recursively using BFS to ensure that files will be located (rLBA) sequentially
 	queue := []string{viso.root} // paths
 
-	for i := 0; i < len(queue); i++ {
-		dir, err := viso.fs.Open(queue[i])
+	processDirectory := func(path string) error {
+		dir, err := viso.fs.Open(path)
 		if err != nil {
-			return fmt.Errorf("dir %s open failed: %w", queue[i], err)
+			return fmt.Errorf("dir %s open failed: %w", path, err)
 		}
+
+		defer dir.Close()
 
 		stat, err := dir.Stat()
 		if err != nil {
-			return fmt.Errorf("dir %s stat failed: %w", queue[i], err)
+			return fmt.Errorf("dir %s stat failed: %w", path, err)
 		}
 
 		if !stat.IsDir() {
-			return fmt.Errorf("%s is not a dir", queue[i])
+			return fmt.Errorf("%s is not a dir", path)
 		}
 
 		dirItem := dirItem{
-			path:    queue[i],
+			path:    path,
 			name:    stat.Name(),
 			modTime: stat.ModTime(),
 		}
 
 		items, err := dir.Readdirnames(-1)
 		if err != nil {
-			return fmt.Errorf("dir %s items get failed: %w", queue[i], err)
+			return fmt.Errorf("dir %s items get failed: %w", path, err)
 		}
 
 		for _, item := range items {
-			fullPath := filepath.Join(queue[i], item)
+			fullPath := filepath.Join(path, item)
 			itemStat, err := viso.fs.Stat(fullPath)
 			if err != nil {
 				return fmt.Errorf("item %s stat failed: %w", fullPath, err)
@@ -264,6 +267,13 @@ func (viso *VirtualISO) scanDirectory() error {
 		}
 
 		viso.rootDir = append(viso.rootDir, dirItem)
+		return nil
+	}
+
+	for i := 0; i < len(queue); i++ {
+		if err := processDirectory(queue[i]); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -323,6 +333,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 
 		for i := 0; i < parts; i++ {
 			entry := directoryEntry{
+				Identifier:           makeIdentifier(fileItem.name, joliet),
 				RecordingDateTime:    recordingTimestamp(fileItem.modTime),
 				VolumeSequenceNumber: 1,
 				ExtentLocation:       lba,
@@ -340,10 +351,8 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			}
 
 			if joliet {
-				entry.Identifier = makeIdentifier(fileItem.name, true)
 				item.dirEntryJoliet = append(item.dirEntryJoliet, entry)
 			} else {
-				entry.Identifier = makeIdentifier(fileItem.name, false)
 				item.dirEntry = append(item.dirEntry, entry)
 			}
 
@@ -771,7 +780,7 @@ func (viso *VirtualISO) Name() string {
 	return name
 }
 
-func (viso *VirtualISO) Readdir(count int) ([]os.FileInfo, error) {
+func (viso *VirtualISO) Readdir(count int) ([]fs.FileInfo, error) {
 	dir, err := viso.fs.Open(viso.root)
 	if err != nil {
 		return nil, err
@@ -793,7 +802,7 @@ func (viso *VirtualISO) Readdirnames(n int) ([]string, error) {
 	return dir.Readdirnames(n)
 }
 
-func (viso *VirtualISO) Stat() (os.FileInfo, error) { return &virtualISOStat{viso}, nil }
+func (viso *VirtualISO) Stat() (fs.FileInfo, error) { return &virtualISOStat{viso}, nil }
 
 func (*VirtualISO) Write([]byte) (int, error) { return 0, syscall.EPERM }
 
@@ -829,7 +838,7 @@ func (s virtualISOStat) Name() string { return s.iso.Name() }
 
 func (s virtualISOStat) Size() int64 { return int64(s.iso.totalSize) }
 
-func (s virtualISOStat) Mode() os.FileMode { return os.ModeIrregular }
+func (s virtualISOStat) Mode() fs.FileMode { return fs.ModeIrregular }
 
 func (s virtualISOStat) ModTime() time.Time { return s.iso.createdAt }
 
