@@ -630,6 +630,7 @@ func (viso *VirtualISO) Read(p []byte) (int, error) {
 }
 
 func (viso *VirtualISO) ReadAt(p []byte, off int64) (int, error) {
+	// TODO: make ReadAt able to work from multiple goroutines without data races
 	nw, err := viso.read(p, off)
 	return int(nw), err
 }
@@ -688,7 +689,9 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 					return read, fmt.Errorf("seek %s failed: %w", fileItem.path, err)
 				}
 
-				n, err := f.Read(buf)
+				// ReadFull because sometimes one Read may be not enough.
+				// We want to read minimum between overall remaining amount of bytes and amount of bytes needed to reach EOF.
+				n, err := io.ReadFull(f, buf[:min(remain, fileItem.size-fileOffset)])
 				if err != nil {
 					return read, fmt.Errorf("read %s failed: %w", fileItem.path, err)
 				}
@@ -706,11 +709,13 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 					remain = toWrite
 				}
 
-				n := copy(buf, emptySector[:toWrite])
-				buf = buf[n:]
-				remain -= sizeBytes(n)
-				read += int64(n)
-				offset += sizeBytes(n)
+				for i := sizeBytes(0); i < toWrite; i++ {
+					buf[i] = 0
+				}
+				buf = buf[toWrite:]
+				remain -= toWrite
+				read += int64(toWrite)
+				offset += toWrite
 			}
 		}
 	}
@@ -772,6 +777,8 @@ func (viso *VirtualISO) Readdir(count int) ([]os.FileInfo, error) {
 		return nil, err
 	}
 
+	defer dir.Close()
+
 	return dir.Readdir(count)
 }
 
@@ -780,6 +787,8 @@ func (viso *VirtualISO) Readdirnames(n int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	defer dir.Close()
 
 	return dir.Readdirnames(n)
 }

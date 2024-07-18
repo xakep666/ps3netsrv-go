@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/afero"
 )
@@ -88,12 +89,12 @@ func sfoField(f afero.File, field string) (string, error) {
 		return "", fmt.Errorf("failed to seek to key at %d: %w", off, err)
 	}
 
-	ret := make([]byte, idxEntry.DataLen)
+	var ret strings.Builder
 
-	_, err = io.ReadFull(f, ret)
+	_, err = io.CopyN(&ret, f, int64(idxEntry.DataLen)-1) // because null-terminated
 	if err != nil {
 		return "", fmt.Errorf("failed to read value: %w", err)
 	}
 
-	return string(ret[:len(ret)-1]), nil
+	return ret.String(), nil
 }

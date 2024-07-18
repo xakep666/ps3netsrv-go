@@ -17,8 +17,6 @@ const (
 	currentDir = "."
 )
 
-var emptySector [sectorSize]byte
-
 type directoryFile struct {
 	path string // relative to base fs
 	name string
