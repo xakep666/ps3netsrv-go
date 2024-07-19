@@ -1,6 +1,6 @@
 # ps3netsrv-go
 
-It's a minimal alternative implementation of original [ps3netsrv](https://github.com/aldostools/webMAN-MOD/tree/master/_Projects_/ps3netsrv)
+It's an alternative implementation of original [ps3netsrv](https://github.com/aldostools/webMAN-MOD/tree/master/_Projects_/ps3netsrv)
 which needed to install games using WebMAN/IrisMAN over network (without copying files to console).
 
 I made it because original code is way hard to read and hard to build for some platforms. And for fun and education
@@ -68,6 +68,14 @@ Config file discovered in following order:
   * `$XDG_CONFIG_HOME` or `~/.config` on Linux
   * `~/Library/Application Support` on macOS
 
+## Performance tips
+* Connect your console to the network using ethernet cable. To achieve maximum performance server and console
+should be connected with 1Gbps network.
+* Use SSD or NVMe drive to store games. It will reduce loading times. 
+* Use decrypted ISOs. It will reduce CPU usage and loading times. You can decrypt images using `decrypt` subcommand.
+* Use "compiled" ISOs instead of folder with files. It will reduce loading times.
+You can build ISO image using `makeiso` subcommand.
+
 ## Exposing tips
 * Use limits:
     * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server --root=/home/games --client-whitelist=192.168.0.123`
@@ -80,7 +88,7 @@ Config file discovered in following order:
 * To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
-[Go 1.21+](https://go.dev/dl/)
+[Go 1.23+](https://go.dev/dl/)
 
 ## Building
 ```bash
