@@ -270,8 +270,11 @@ func (viso *VirtualISO) scanDirectory() error {
 		return nil
 	}
 
-	for i := 0; i < len(queue); i++ {
-		if err := processDirectory(queue[i]); err != nil {
+	for len(queue) > 0 {
+		dir := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		if err := processDirectory(dir); err != nil {
 			return err
 		}
 	}

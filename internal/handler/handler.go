@@ -17,6 +17,8 @@ import (
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
 
+const psxPrefixSize = 24
+
 var ErrWriteForbidden = fmt.Errorf("write operation forbidden")
 
 type Context = server.Context[State]
@@ -168,8 +170,27 @@ func (h *Handler) HandleOpenFile(ctx *Context, path string) (fs.FileInfo, error)
 	}
 
 	ctx.State.ROFile = f
+	ctx.State.CDSectorSize = 2352 // default sector size
 
-	return f.Stat()
+	fi, err := f.Stat()
+	if err != nil {
+		log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
+		return nil, err
+	}
+
+	// if file size between 2Mb and 848Mb we should try to detect sector size
+	if fi.Size() >= 0x200000 && fi.Size() <= 0x35000000 {
+		sectorSize, err := determineSectorSize(f)
+		if err != nil {
+			log.WarnContext(ctx, "Determine sector size failed", logutil.ErrorAttr(err))
+		}
+		if sectorSize > 0 && sectorSize != ctx.State.CDSectorSize {
+			log.InfoContext(ctx, "Sector size determined", slog.Int("size", sectorSize))
+			ctx.State.CDSectorSize = sectorSize
+		}
+	}
+
+	return fi, nil
 }
 
 func (h *Handler) HandleCloseFile(ctx *Context) {
@@ -183,6 +204,9 @@ func (h *Handler) HandleCloseFile(ctx *Context) {
 	if err := ctx.State.ROFile.Close(); err != nil {
 		log.WarnContext(ctx, "Close R/O file failed", logutil.ErrorAttr(err))
 	}
+
+	ctx.State.ROFile = nil
+	ctx.State.CDSectorSize = 0
 }
 
 func (h *Handler) HandleReadFile(ctx *Context, limit uint32, offset uint64, wr server.ReadFileResponseWriter) error {
@@ -222,8 +246,43 @@ func (h *Handler) HandleReadFileCritical(ctx *Context, limit uint32, offset uint
 		return fmt.Errorf("seek failed: %w", err)
 	}
 
-	_, err := h.Copier.Copy(w, io.LimitReader(ctx.State.ROFile, int64(limit)))
+	_, err := h.Copier.CopyN(w, ctx.State.ROFile, int64(limit))
 	return err
+}
+
+func (h *Handler) HandleReadCD2048Critical(ctx *Context, startSector, sectorsCount uint32, w io.Writer) error {
+	const readSize = 2048
+	slog.DebugContext(ctx, "Read CD2048 critical",
+		slog.Int("sectorSize", ctx.State.CDSectorSize),
+		slog.Uint64("startSector", uint64(startSector)),
+		slog.Uint64("sectorsCount", uint64(sectorsCount)),
+	)
+
+	if ctx.State.ROFile == nil {
+		return fmt.Errorf("no file opened")
+	}
+
+	if ctx.State.CDSectorSize <= 0 {
+		return fmt.Errorf("sector size was not determined")
+	}
+
+	// this command treats sectors as 2048-sized, so if sector size is non-standard, we must skip some bytes at the end
+	offset := psxPrefixSize + int64(startSector)*int64(ctx.State.CDSectorSize)
+	for range sectorsCount {
+		_, err := ctx.State.ROFile.Seek(offset, io.SeekStart)
+		if err != nil {
+			return fmt.Errorf("seek failed: %w", err)
+		}
+
+		_, err = h.Copier.CopyN(w, ctx.State.ROFile, readSize)
+		if err != nil {
+			return fmt.Errorf("copy failed: %w", err)
+		}
+
+		offset += int64(ctx.State.CDSectorSize)
+	}
+
+	return nil
 }
 
 func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
@@ -365,4 +424,45 @@ func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 	log.DebugContext(ctx, "Directory size calculated", slog.Int64("size", size))
 
 	return size, nil
+}
+
+func determineSectorSize(f io.ReaderAt) (int, error) {
+	// sorted
+	sectorSizes := [...]int{2048, 2328, 2336, 2340, 2352, 2368, 2448}
+	const (
+		magic1            = "\x01CD001"
+		magic2            = "PLAYSTATION "
+		extraBytes        = 2 // between magic1 and magic2
+		systemAreaSectors = 16
+	)
+	// We can detect sector size for 1 read(at) system call
+	// to do this we read amount of data that equals to difference between maximum and minimum sector size
+	// plus length of magic1 and magic2 plus two bytes between them.
+	// After successful reading we just try to locate magic1 or magic2 by offsets determined by
+	// subtraction between probed sector size and minimal sector size.
+	minMaxDifference := sectorSizes[len(sectorSizes)-1] - sectorSizes[0]
+	buf := make([]byte, minMaxDifference+len(magic1)+extraBytes+len(magic2))
+
+	n, err := f.ReadAt(buf, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]))
+	if err != nil {
+		return -1, fmt.Errorf("read failed: %w", err)
+	}
+	if n != len(buf) {
+		return -1, fmt.Errorf("read failed: expected %d bytes, got %d", len(buf), n)
+	}
+
+	for _, sectorSize := range sectorSizes {
+		idxMagic1 := sectorSize - sectorSizes[0]
+		if string(buf[idxMagic1:idxMagic1+len(magic1)]) == magic1 {
+			return sectorSize, nil
+		}
+
+		idxMagic2 := idxMagic1 + len(magic1) + extraBytes
+		if string(buf[idxMagic2:idxMagic2+len(magic2)]) == magic2 {
+			return sectorSize, nil
+		}
+	}
+
+	// for everything except psx images we will be here
+	return -1, nil
 }

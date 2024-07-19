@@ -8,9 +8,10 @@ import (
 )
 
 type State struct {
-	CwdHandle afero.File
-	ROFile    afero.File
-	WOFile    afero.File
+	CwdHandle    afero.File
+	ROFile       afero.File
+	CDSectorSize int // of ROFile, used by ReadCD2048Critical
+	WOFile       afero.File
 }
 
 func (s *State) Close() error {
@@ -39,6 +40,8 @@ func (s *State) Close() error {
 
 		s.WOFile = nil
 	}
+
+	s.CDSectorSize = 0
 
 	return errors.Join(errs...)
 }

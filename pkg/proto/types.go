@@ -18,6 +18,7 @@ const (
 
 	// CmdReadCD2048Critical reads 2048 sectors in 2352 sectors iso.
 	// Offsets and sizes in sectors. If file read fails, client is exited.
+	// Used by PSX mode (PS1 emulation).
 	CmdReadCD2048Critical
 
 	// CmdReadFile closes the active wo file (if any) and opens+truncates or creates a new one.
@@ -168,6 +169,17 @@ type ReadFileResult struct {
 
 // ReadFileCriticalCommand contains data for CmdReadFileCritical.
 type ReadFileCriticalCommand ReadFileCommand
+
+// ReadCD2048CriticalCommand used by CmdReadCD2048Critical.
+type ReadCD2048CriticalCommand struct {
+	_ uint16 // pad
+
+	// StartSector is a number of sector to start reading from.
+	StartSector uint32
+
+	// SectorsToRead is a number of sectors to read.
+	SectorsToRead uint32
+}
 
 // CreateFileCommand contains data for CmdCreateFile.
 type CreateFileCommand struct {

@@ -116,6 +116,8 @@ func (sapp *serverApp) server() error {
 	var cop *copier.Copier
 	if sapp.BufferSize > 0 {
 		cop = copier.NewPooledCopier(sapp.BufferSize)
+	} else {
+		cop = copier.NewCopier()
 	}
 
 	s := server.Server[handler.State]{

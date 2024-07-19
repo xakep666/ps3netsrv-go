@@ -119,6 +119,8 @@ func (s *Server[StateT]) handleCommand(opCode proto.OpCode, ctx *Context[StateT]
 		return s.handleReadFile(ctx)
 	case proto.CmdReadFileCritical:
 		return s.handleReadFileCritical(ctx)
+	case proto.CmdReadCD2048Critical:
+		return s.handleReadCD2048Critical(ctx)
 	case proto.CmdReadDirEntry:
 		return s.handleReadDirEntry(ctx)
 	case proto.CmdReadDirEntryV2:
@@ -234,6 +236,15 @@ func (s *Server[StateT]) handleReadFileCritical(ctx *Context[StateT]) error {
 	}
 
 	return s.Handler.HandleReadFileCritical(ctx, toRead, off, ctx.wr.Writer)
+}
+
+func (s *Server[StateT]) handleReadCD2048Critical(ctx *Context[StateT]) error {
+	startSector, sectorsToRead, err := ctx.rd.ReadReadCD2048Critical()
+	if err != nil {
+		return fmt.Errorf("read CD2048 critical params failed: %w", err)
+	}
+
+	return s.Handler.HandleReadCD2048Critical(ctx, startSector, sectorsToRead, ctx.wr.Writer)
 }
 
 func (s *Server[StateT]) handleCreateFile(ctx *Context[StateT]) error {

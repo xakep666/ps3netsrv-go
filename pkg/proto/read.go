@@ -95,6 +95,17 @@ func (r *Reader) ReadReadFileCritical() (bytesToRead uint32, offset uint64, err 
 	return cmd.BytesToRead, cmd.Offset, nil
 }
 
+func (r *Reader) ReadReadCD2048Critical() (sectorsToRead, startSector uint32, err error) {
+	var cmd ReadCD2048CriticalCommand
+
+	err = r.readCommandTail(&cmd)
+	if err != nil {
+		return 0, 0, fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	return cmd.SectorsToRead, cmd.StartSector, nil
+}
+
 func (r *Reader) ReadCreateFile() (string, error) {
 	var cmd CreateFileCommand
 

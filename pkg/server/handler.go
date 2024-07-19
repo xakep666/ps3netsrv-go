@@ -50,6 +50,7 @@ type Handler[StateT any] interface {
 	HandleCloseFile(ctx *Context[StateT])
 	HandleReadFile(ctx *Context[StateT], limit uint32, offset uint64, w ReadFileResponseWriter) error
 	HandleReadFileCritical(ctx *Context[StateT], limit uint32, offset uint64, w io.Writer) error
+	HandleReadCD2048Critical(ctx *Context[StateT], startSector, sectorsToRead uint32, w io.Writer) error
 	HandleCreateFile(ctx *Context[StateT], path string) error
 	HandleWriteFile(ctx *Context[StateT], data io.Reader) (int32, error)
 	HandleDeleteFile(ctx *Context[StateT], path string) error
