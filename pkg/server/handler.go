@@ -2,84 +2,59 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
-
-	"github.com/spf13/afero"
 )
 
-type LenReader = proto.LenReader
-
-type State struct {
-	CwdHandle afero.File
-	ROFile    afero.File
-	WOFile    afero.File
-}
-
-type Context struct {
+type Context[StateT any] struct {
 	context.Context
 
 	RemoteAddr net.Addr
 
-	State
+	State StateT
 
 	rd     proto.Reader
 	wr     proto.Writer
 	cancel context.CancelFunc
 }
 
-func (s *Context) Close() error {
-	var errs []error
-
+func (s *Context[StateT]) Close() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
 
-	if s.ROFile != nil {
-		if err := s.ROFile.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("ROFile close failed: %w", err))
+	if closer, ok := any(&s.State).(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			return fmt.Errorf("state close failed: %w", err)
 		}
-
-		s.ROFile = nil
 	}
 
-	if s.CwdHandle != nil {
-		if err := s.CwdHandle.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("CwdHandle close failed: %w", err))
-		}
-
-		s.CwdHandle = nil
-	}
-
-	if s.WOFile != nil {
-		if err := s.WOFile.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("WOFile close failed: %w", err))
-		}
-
-		s.WOFile = nil
-	}
-
-	return errors.Join(errs...)
+	return nil
 }
 
-type Handler interface {
-	HandleOpenDir(ctx *Context, path string) bool
-	HandleReadDir(ctx *Context) []fs.FileInfo
-	HandleReadDirEntry(ctx *Context) fs.FileInfo
-	HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
-	HandleOpenFile(ctx *Context, path string) error
-	HandleCloseFile(ctx *Context)
-	HandleReadFile(ctx *Context, limit uint32, offset uint64) LenReader
-	HandleReadFileCritical(ctx *Context, limit uint32, offset uint64) (io.Reader, error)
-	HandleCreateFile(ctx *Context, path string) error
-	HandleWriteFile(ctx *Context, data io.Reader) (int32, error)
-	HandleDeleteFile(ctx *Context, path string) error
-	HandleMkdir(ctx *Context, path string) error
-	HandleRmdir(ctx *Context, path string) error
-	HandleGetDirSize(ctx *Context, path string) (int64, error)
+type ReadFileResponseWriter interface {
+	WriteHeader(length int32)
+	io.Writer
+}
+
+type Handler[StateT any] interface {
+	HandleOpenDir(ctx *Context[StateT], path string) bool
+	HandleReadDir(ctx *Context[StateT]) []fs.FileInfo
+	HandleReadDirEntry(ctx *Context[StateT]) fs.FileInfo
+	HandleStatFile(ctx *Context[StateT], path string) (fs.FileInfo, error)
+	HandleOpenFile(ctx *Context[StateT], path string) (fs.FileInfo, error)
+	HandleCloseFile(ctx *Context[StateT])
+	HandleReadFile(ctx *Context[StateT], limit uint32, offset uint64, w ReadFileResponseWriter) error
+	HandleReadFileCritical(ctx *Context[StateT], limit uint32, offset uint64, w io.Writer) error
+	HandleReadCD2048Critical(ctx *Context[StateT], startSector, sectorsToRead uint32, w io.Writer) error
+	HandleCreateFile(ctx *Context[StateT], path string) error
+	HandleWriteFile(ctx *Context[StateT], data io.Reader) (int32, error)
+	HandleDeleteFile(ctx *Context[StateT], path string) error
+	HandleMkdir(ctx *Context[StateT], path string) error
+	HandleRmdir(ctx *Context[StateT], path string) error
+	HandleGetDirSize(ctx *Context[StateT], path string) (int64, error)
 }

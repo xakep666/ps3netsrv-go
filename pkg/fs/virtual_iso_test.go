@@ -34,9 +34,7 @@ func TestMakeFullImage(t *testing.T) {
 
 	var bigFileHash []byte
 
-	tmpDir := t.TempDir()
-
-	baseFS := afero.NewBasePathFs(afero.NewOsFs(), tmpDir)
+	baseFS := afero.NewBasePathFs(afero.NewOsFs(), t.TempDir())
 
 	require.NoError(t, baseFS.MkdirAll(isoRoot, os.ModePerm))
 	require.NoError(t,
@@ -83,7 +81,7 @@ func TestMakeFullImage(t *testing.T) {
 	viso, err := fs.NewVirtualISO(baseFS, isoRoot, false)
 	require.NoError(t, err)
 
-	isoFile, err := os.CreateTemp(t.TempDir(), "test_gen*.iso")
+	isoFile, err := os.CreateTemp("", "test_gen*.iso")
 	require.NoError(t, err)
 
 	t.Logf("Created ISO file at %s", isoFile.Name())

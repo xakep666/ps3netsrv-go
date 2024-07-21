@@ -1,11 +1,11 @@
 package proto
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 )
 
 type Reader struct {
@@ -93,6 +93,17 @@ func (r *Reader) ReadReadFileCritical() (bytesToRead uint32, offset uint64, err 
 	}
 
 	return cmd.BytesToRead, cmd.Offset, nil
+}
+
+func (r *Reader) ReadReadCD2048Critical() (sectorsToRead, startSector uint32, err error) {
+	var cmd ReadCD2048CriticalCommand
+
+	err = r.readCommandTail(&cmd)
+	if err != nil {
+		return 0, 0, fmt.Errorf("readCommandTail failed: %w", err)
+	}
+
+	return cmd.SectorsToRead, cmd.StartSector, nil
 }
 
 func (r *Reader) ReadCreateFile() (string, error) {
@@ -187,21 +198,21 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 
 // readCommandTail reads remaining data of command.
 func (r *Reader) readCommandTail(tail interface{}) error {
-	err := binary.Read(bytes.NewReader(r.cmd.Data[:]), binary.BigEndian, tail)
+	_, err := binary.Decode(r.cmd.Data[:], binary.BigEndian, tail)
 	if err != nil {
-		return fmt.Errorf("binary.Read failed: %w", err)
+		return fmt.Errorf("binary.Decode failed: %w", err)
 	}
 
 	return nil
 }
 
 func (r *Reader) readStringN(size uint16) (string, error) {
-	buf := make([]byte, size)
+	var buf strings.Builder
 
-	_, err := io.ReadFull(r, buf)
+	_, err := io.CopyN(&buf, r, int64(size))
 	if err != nil {
 		return "", fmt.Errorf("io.ReadFull failed: %w", err)
 	}
 
-	return string(buf), nil
+	return buf.String(), nil
 }

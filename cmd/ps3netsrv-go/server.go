@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/xakep666/ps3netsrv-go/internal/copier"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/isroot"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
@@ -45,21 +46,21 @@ func (sapp *serverApp) setupLogger() {
 		level = slog.LevelDebug
 	}
 
-	var handler slog.Handler
+	var slogHandler slog.Handler
 	if sapp.JSONLog {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 			Level: level,
 		})
 	} else {
-		handler = tint.NewHandler(colorable.NewColorable(os.Stdout), &tint.Options{
+		slogHandler = tint.NewHandler(colorable.NewColorable(os.Stdout), &tint.Options{
 			Level:   level,
 			NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
 		})
 	}
 
-	handler = &server.SlogContextHandler{handler}
+	slogHandler = &handler.SlogContextHandler{Handler: slogHandler}
 
-	slog.SetDefault(slog.New(handler))
+	slog.SetDefault(slog.New(slogHandler))
 }
 
 func (sapp *serverApp) debugServer() error {
@@ -115,16 +116,18 @@ func (sapp *serverApp) server() error {
 	var cop *copier.Copier
 	if sapp.BufferSize > 0 {
 		cop = copier.NewPooledCopier(sapp.BufferSize)
+	} else {
+		cop = copier.NewCopier()
 	}
 
-	s := server.Server{
-		Handler: &Handler{
-			Fs:         &fs.FS{afero.NewBasePathFs(afero.NewOsFs(), sapp.Root)},
+	s := server.Server[handler.State]{
+		Handler: &handler.Handler{
+			Fs:         &fs.FS{Fs: afero.NewBasePathFs(afero.NewOsFs(), sapp.Root)},
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
 		},
-		Copier:      cop,
 		ReadTimeout: sapp.ReadTimeout,
+		Logger:      slog.Default(),
 	}
 
 	if sapp.MaxClients > 0 {

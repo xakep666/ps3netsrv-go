@@ -1,10 +1,11 @@
 package fs
 
 import (
-	"encoding"
+	"cmp"
 	"encoding/binary"
-	"fmt"
+	"iter"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,41 +17,13 @@ const (
 	currentDir = "."
 )
 
-var emptySector [sectorSize]byte
-
-type fileItem struct {
+type directoryFile struct {
 	path string // relative to base fs
 	name string
 	size sizeBytes   // reported by Stat() or counted as sum for multipart files
 	rLBA sizeSectors // virtual address of file start, we use this to control boundaries during read
 
 	modTime time.Time
-
-	file afero.File // used for reduce opening count during reading
-}
-
-func (i *fileItem) openOnDemand(fs afero.Fs) (afero.File, error) {
-	if i.file != nil {
-		return i.file, nil
-	}
-
-	f, err := fs.Open(i.path)
-	if err != nil {
-		return nil, err
-	}
-
-	i.file = f
-	return f, nil
-}
-
-func (i *fileItem) closeOpened() error {
-	if i.file != nil {
-		err := i.file.Close()
-		i.file = nil
-		return err
-	}
-
-	return nil
 }
 
 type dirItem struct {
@@ -59,7 +32,7 @@ type dirItem struct {
 	modTime        time.Time
 	dirEntry       []directoryEntry // must be alphabetically sort by name
 	dirEntryJoliet []directoryEntry // must be alphabetically sort by name
-	files          []fileItem
+	files          []directoryFile
 }
 
 func (i dirItem) isDirectChild(of dirItem) bool {
@@ -127,7 +100,7 @@ func (l dirItemList) size(joliet bool) sizeBytes {
 		}
 
 		for _, entry := range entries {
-			ret += entry.Size()
+			ret += entry.size()
 		}
 
 		ret = ret.sectors().bytes() // directory entries of one directory aligned to sector
@@ -136,58 +109,95 @@ func (l dirItemList) size(joliet bool) sizeBytes {
 	return ret
 }
 
+type fileItem struct {
+	file afero.File // used for reduce opening count during reading
+
+	path string      // relative to base fs
+	size sizeBytes   // reported by Stat() or counted as sum for multipart files
+	rLBA sizeSectors // virtual address of file start, we use this to control boundaries during read
+}
+
+func (i *fileItem) openOnDemand(fs afero.Fs) (afero.File, error) {
+	if i.file != nil {
+		return i.file, nil
+	}
+
+	f, err := fs.Open(i.path)
+	if err != nil {
+		return nil, err
+	}
+
+	i.file = f
+	return f, nil
+}
+
+func (i *fileItem) closeOpened() error {
+	if i.file != nil {
+		err := i.file.Close()
+		i.file = nil
+		return err
+	}
+
+	return nil
+}
+
+func (l dirItemList) collectFiles() []fileItem {
+	var ret []fileItem
+
+	for _, dir := range l {
+		for _, file := range dir.files {
+			ret = append(ret, fileItem{
+				path: file.path,
+				size: file.size,
+				rLBA: file.rLBA,
+			})
+		}
+	}
+
+	// order by location to faster search during reading
+	slices.SortFunc(ret, func(a, b fileItem) int {
+		return cmp.Compare(a.rLBA, b.rLBA)
+	})
+
+	return ret
+}
+
+type filesList []fileItem
+
 // filesToRead finds files that should be read by given toRead (limit) and offset (since disk start).
-func (l dirItemList) filesToRead(toRead, offset sizeBytes) []*fileItem {
-	var (
-		ret                 []*fileItem
-		startDir, startFile int
-	)
+func (l filesList) filesToRead(toRead, offset sizeBytes) iter.Seq[*fileItem] {
+	return func(yield func(item *fileItem) bool) {
+		// find a file where offset goes between start and end (aligned to sector)
+		// we assume that files are not overlapping
+		startFile, found := slices.BinarySearchFunc(l, offset.floorSectors(),
+			func(item fileItem, target sizeSectors) int {
+				switch {
+				case target < item.rLBA: // target sector before file
+					return 1
+				case target >= item.rLBA+item.size.sectors(): // target sector after file
+					return -1
+				default: // target sector inside file
+					return 0
+				}
+			},
+		)
 
-	// find a file where offset goes between start and end (aligned to sector)
-	offsetSectors := offset.sectors()
-firstFileLoop:
-	for i := range l {
-		for j := range l[i].files {
-			file := &l[i].files[j]
-
-			if offsetSectors >= file.rLBA && offsetSectors < (file.rLBA+file.size.sectors()) {
-				ret = append(ret, file)
-				startDir = i
-				startFile = j
-				// we already "read" some bytes of file
-				read := file.size.sectors().bytes() - (offset - file.rLBA.bytes())
-				toRead -= read
-				offset += read
-				break firstFileLoop
-			}
-		}
-	}
-
-	if len(ret) == 0 {
-		return ret // no files found so nothing to do further
-	}
-
-loop:
-	for i := startDir; i < len(l); i++ {
-		startDirFile := 0
-		if i == startDir {
-			startDirFile = startFile + 1
+		if !found {
+			return
 		}
 
-		for j := startDirFile; j < len(l[i].files); j++ {
-			if toRead <= 0 {
-				break loop
+		for i := startFile; i < len(l) && toRead > 0; i++ {
+			file := &l[i]
+			if !yield(file) {
+				return
 			}
 
-			file := &l[i].files[j]
-			ret = append(ret, file)
-			read := file.size.sectors().bytes() // aligned to sector
+			// file size may be actually not aligned to sector
+			read := file.size.sectors().bytes() - (offset - file.rLBA.bytes())
 			toRead -= read
 			offset += read
 		}
 	}
-
-	return ret
 }
 
 func fixDirLBA(entries []directoryEntry, dirLBA, filesLBA sizeSectors) {
@@ -211,74 +221,11 @@ func (t pathTable) fixLBA(dirLBA sizeSectors) {
 func (t pathTable) size() sizeBytes {
 	var ret sizeBytes
 	for _, e := range t {
-		ret += e.Size()
+		ret += e.size()
 	}
 
 	return ret
 }
-
-// disc representation for more convenient addressing with sectors
-type disc []byte
-
-func (d *disc) appendSector(b []byte) {
-	d.padLastSector()
-
-	if sizeBytes(len(b)) > sectorSize {
-		b = b[:sectorSize]
-	}
-
-	*d = append(*d, b...)
-	if sizeBytes(len(b)) < sectorSize {
-		padding := emptySector[:sectorSize-sizeBytes(len(b))]
-		*d = append(*d, padding...)
-	}
-}
-
-func (d *disc) setSectorByMarshaller(m encoding.BinaryMarshaler, sector sizeSectors) error {
-	data, err := m.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	copy((*d)[sector.bytes():sector.next().bytes()], data)
-	return nil
-}
-
-func (d *disc) appendMarshaller(m encoding.BinaryMarshaler, newSector bool) error {
-	data, err := m.MarshalBinary()
-	if err != nil {
-		return err
-	}
-
-	if sizeBytes(len(data)) > sectorSize {
-		return fmt.Errorf("too big sector object")
-	}
-
-	// if object will not fit remaining sector space we must write it in new sector
-	if sizeBytes(len(data)) > (sectorSize - sizeBytes(len(*d))%sectorSize) {
-		newSector = true
-	}
-
-	// write to new sector or append to existing
-	if newSector {
-		d.padLastSector()
-	}
-
-	*d = append(*d, data...)
-
-	return nil
-}
-
-func (d *disc) sectors() sizeSectors { return sizeBytes(len(*d)).sectors() }
-
-func (d *disc) padLastSector() {
-	if extra := sizeBytes(len(*d)) % sectorSize; extra > 0 {
-		padding := emptySector[:sectorSize-extra]
-		*d = append(*d, padding...)
-	}
-}
-
-func (d *disc) size() sizeBytes { return sizeBytes(len(*d)) }
 
 //
 // Special ps3 game disk sectors
@@ -291,16 +238,14 @@ type sectorRangeEntry struct {
 
 type discRangesSector []sectorRangeEntry
 
-func (d discRangesSector) MarshalBinary() ([]byte, error) {
-	ret := make([]byte, 8+len(d)*binary.Size(sectorRangeEntry{})) // 2x uint32 first
-	binary.BigEndian.PutUint32(ret[0:4], uint32(len(d)))
+func (d discRangesSector) encode(enc *iso9660encoder) {
+	enc.appendUint32(uint32(len(d)), binary.BigEndian)
+	enc.appendZeroes(4)
 
-	for i, e := range d {
-		binary.BigEndian.PutUint32(ret[8+i*binary.Size(sectorRangeEntry{}):], uint32(e.StartSector))
-		binary.BigEndian.PutUint32(ret[8+i*binary.Size(sectorRangeEntry{})+4:], uint32(e.EndSector))
+	for _, e := range d {
+		enc.appendUint32(uint32(e.StartSector), binary.BigEndian)
+		enc.appendUint32(uint32(e.EndSector), binary.BigEndian)
 	}
-
-	return ret, nil
 }
 
 type discInfoSector struct {
@@ -310,20 +255,12 @@ type discInfoSector struct {
 	Hash      [0x10]byte
 }
 
-func (d *discInfoSector) MarshalBinary() ([]byte, error) {
-	ret := make([]byte, 448)
-
-	copy(ret[:16], d.ConsoleID)
-	// must be padded with spaces
-	for i := 16; i < 48; i++ {
-		ret[i] = ' '
-	}
-	copy(ret[16:48], d.ProductID)
-
-	copy(ret[64:432], d.Info[:])
-	copy(ret[432:], d.Hash[:])
-
-	return ret, nil
+func (d *discInfoSector) encode(enc *iso9660encoder) {
+	enc.appendString(d.ConsoleID, 16, ' ')
+	enc.appendString(d.ProductID, 32, ' ')
+	enc.appendZeroes(16)
+	enc.appendBytes(d.Info[:])
+	enc.appendBytes(d.Hash[:])
 }
 
 func makeIdentifier(name string, joliet bool) stringD1 {
@@ -332,14 +269,4 @@ func makeIdentifier(name string, joliet bool) stringD1 {
 	}
 
 	return mangleStrD1(name, joliet)
-}
-
-type pathTableEntryMarshaller struct {
-	pathTableEntry
-
-	order binary.ByteOrder
-}
-
-func (p pathTableEntryMarshaller) MarshalBinary() (data []byte, err error) {
-	return p.pathTableEntry.MarshalBinary(p.order)
 }

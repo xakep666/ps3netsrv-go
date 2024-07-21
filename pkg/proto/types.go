@@ -18,6 +18,7 @@ const (
 
 	// CmdReadCD2048Critical reads 2048 sectors in 2352 sectors iso.
 	// Offsets and sizes in sectors. If file read fails, client is exited.
+	// Used by PSX mode (PS1 emulation).
 	CmdReadCD2048Critical
 
 	// CmdReadFile closes the active wo file (if any) and opens+truncates or creates a new one.
@@ -82,7 +83,7 @@ type OpenDirResult struct {
 	Result int32
 }
 
-// ReadDirEntryCommand contains data for CmdReadDir, CmdReadDirEntry.
+// ReadDirEntryCommand contains data for CmdReadDir, CmdReadDirEntry, CmdReadDirEntryV2.
 type ReadDirEntryCommand struct {
 }
 
@@ -110,6 +111,16 @@ type ReadDirEntryResult struct {
 	IsDirectory bool
 }
 
+// ReadDirEntryV2Result acts like ReadDirEntryResult but for CmdReadDirEntryV2.
+type ReadDirEntryV2Result struct {
+	FileSize    int64
+	ModTime     uint64
+	ChangeTime  uint64
+	AccessTime  uint64
+	FilenameLen uint16
+	IsDirectory bool
+}
+
 // StatFileCommand contains data for CmdStatFile.
 type StatFileCommand struct {
 	// FpLen is a length of path to read further. Path is absolute here.
@@ -121,8 +132,8 @@ type StatFileResult struct {
 	// FileSize contains file size for files, 0 for directories and -1 for error.
 	FileSize    int64
 	ModTime     uint64
-	AccessTime  uint64
 	ChangeTime  uint64
+	AccessTime  uint64
 	IsDirectory bool
 }
 
@@ -158,6 +169,17 @@ type ReadFileResult struct {
 
 // ReadFileCriticalCommand contains data for CmdReadFileCritical.
 type ReadFileCriticalCommand ReadFileCommand
+
+// ReadCD2048CriticalCommand used by CmdReadCD2048Critical.
+type ReadCD2048CriticalCommand struct {
+	_ uint16 // pad
+
+	// StartSector is a number of sector to start reading from.
+	StartSector uint32
+
+	// SectorsToRead is a number of sectors to read.
+	SectorsToRead uint32
+}
 
 // CreateFileCommand contains data for CmdCreateFile.
 type CreateFileCommand struct {
