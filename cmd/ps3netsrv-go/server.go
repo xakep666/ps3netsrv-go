@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,7 +29,7 @@ import (
 
 type serverApp struct {
 	Root                  string           `help:"Root directory with games." type:"existingdir" default:"." env:"PS3NETSRV_ROOT"`
-	ListenAddr            string           `help:"Main server listen address." default:":38008" env:"PS3NETSRV_LISTEN_ADDR"`
+	ListenAddr            string           `help:"Main server listen address." default:"0.0.0.0:38008" env:"PS3NETSRV_LISTEN_ADDR"`
 	Debug                 bool             `help:"Enable debug log messages." env:"PS3NETSRV_DEBUG"`
 	JSONLog               bool             `help:"Output log messages in json format." env:"PS3NETSRV_JSON_LOG"`
 	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided." env:"PS3NETSRV_DEBUG_SERVER_LISTEN_ADDR"`
@@ -68,7 +69,7 @@ func (sapp *serverApp) debugServer() error {
 		return nil
 	}
 
-	socket, err := net.Listen("tcp", sapp.DebugServerListenAddr)
+	socket, err := listenTCP(sapp.DebugServerListenAddr)
 	if err != nil {
 		return fmt.Errorf("debug server listen failed: %w", err)
 	}
@@ -105,7 +106,7 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 }
 
 func (sapp *serverApp) server() error {
-	socket, err := net.Listen("tcp", sapp.ListenAddr)
+	socket, err := listenTCP(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
@@ -203,4 +204,24 @@ func (sapp *serverApp) Run() error {
 	eg.Go(sapp.server)
 
 	return eg.Wait()
+}
+
+func listenTCP(addr string) (net.Listener, error) {
+	// if address is ipv4 we should pass "tcp4" net to listen only on ipv4 addresses
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return net.Listen("tcp", addr)
+	}
+
+	ipAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return net.Listen("tcp", addr)
+	}
+
+	if ipAddr.Is4() {
+		return net.Listen("tcp4", addr)
+	}
+
+	return net.Listen("tcp", addr)
 }

@@ -47,7 +47,7 @@ func (c *Copier) Copy(w io.Writer, r io.Reader) (int64, error) {
 }
 
 func (c *Copier) CopyN(w io.Writer, r io.Reader, n int64) (int64, error) {
-	written, err := c.CopyN(w, r, n)
+	written, err := c.Copy(w, io.LimitReader(r, n))
 	if written == n {
 		return n, nil
 	}
