@@ -1,6 +1,7 @@
 package logutil
 
 import (
+	"iter"
 	"log/slog"
 	"net"
 	"strconv"
@@ -17,13 +18,13 @@ type listenAddress struct {
 }
 
 func (la *listenAddress) LogValue() slog.Value {
-	return slog.StringValue(addrToLog(la.addr))
+	return slog.AnyValue(addrToLog(la.addr))
 }
 
-func addrToLog(addr net.Addr) string {
+func addrToLog(addr net.Addr) []string {
 	tcpAddr, isTcpAddr := addr.(*net.TCPAddr)
 	if !isTcpAddr {
-		return addr.String()
+		return []string{addr.String()}
 	}
 
 	// if bound to all, print first non-localhost ip
@@ -33,53 +34,61 @@ func addrToLog(addr net.Addr) string {
 	if isV4Any || (isV6Any && tcpAddr.Zone == "") {
 		ifaddrs, err := net.InterfaceAddrs()
 		if err != nil {
-			return addr.String()
+			return []string{addr.String()}
 		}
 
-		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
-			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
+		ret := make([]string, 0, len(ifaddrs))
+		for addr := range allSuitableAddrs(ifaddrs, isV4Any) {
+			ret = append(ret, net.JoinHostPort(addr, strconv.Itoa(tcpAddr.Port)))
 		}
+
+		return ret
 	}
 
 	// for zoned addr try to get interface by name
 	if isV6Any && tcpAddr.Zone != "" {
 		iface, err := net.InterfaceByName(tcpAddr.Zone)
 		if err != nil {
-			return addr.String()
+			return []string{addr.String()}
 		}
 
 		ifaddrs, err := iface.Addrs()
 		if err != nil {
-			return addr.String()
+			return []string{addr.String()}
 		}
 
-		if foundAddr := firstSuitableIfaddr(ifaddrs, isV4Any); foundAddr != "" {
-			return net.JoinHostPort(foundAddr, strconv.Itoa(tcpAddr.Port))
+		ret := make([]string, 0, len(ifaddrs))
+		for addr := range allSuitableAddrs(ifaddrs, false) {
+			ret = append(ret, net.JoinHostPort(addr, strconv.Itoa(tcpAddr.Port)))
 		}
+
+		return ret
 	}
 
-	return addr.String()
+	return []string{addr.String()}
 }
 
-func firstSuitableIfaddr(ifaddrs []net.Addr, skipV6 bool) string {
-	for _, ifaddr := range ifaddrs {
-		ipNet, isIPNet := ifaddr.(*net.IPNet)
-		if !isIPNet {
-			continue
-		}
+func allSuitableAddrs(ifaddrs []net.Addr, skipV6 bool) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for _, ifaddr := range ifaddrs {
+			ipNet, isIPNet := ifaddr.(*net.IPNet)
+			if !isIPNet {
+				continue
+			}
 
-		// skip loopback
-		if ipNet.IP.IsLoopback() {
-			continue
-		}
+			// skip loopback
+			if ipNet.IP.IsLoopback() {
+				continue
+			}
 
-		// skip v6 for v4 bound
-		if skipV6 && len(ipNet.IP) == net.IPv6len {
-			continue
-		}
+			// skip v6 for v4 bound
+			if skipV6 && ipNet.IP.To4() == nil {
+				continue
+			}
 
-		return ipNet.IP.String()
+			if !yield(ipNet.IP.String()) {
+				return
+			}
+		}
 	}
-
-	return ""
 }
