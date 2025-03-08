@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/afero"
+	"go.uber.org/automaxprocs/maxprocs"
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
@@ -194,8 +196,21 @@ func (sapp *serverApp) warnLargeDir() {
 	}
 }
 
+func (sapp *serverApp) setupRuntime() {
+	_, err := maxprocs.Set(maxprocs.Logger(slog.Info))
+	if err != nil {
+		slog.Warn("maxprocs setup failed", logutil.ErrorAttr(err))
+	}
+
+	_, err = memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
+	if err != nil {
+		slog.Warn("memlimit setup failed", logutil.ErrorAttr(err))
+	}
+}
+
 func (sapp *serverApp) Run() error {
 	sapp.setupLogger()
+	sapp.setupRuntime()
 	sapp.warnRoot()
 	go sapp.warnLargeDir() // asynchronously to not delay server startup
 
