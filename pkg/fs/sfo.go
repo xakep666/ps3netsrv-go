@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/spf13/afero"
 )
 
 var sfoMagic = [...]byte{0, 'P', 'S', 'F'}
@@ -30,7 +28,7 @@ type sfoIndexTableEntry struct {
 
 // sfoField returns provided field from param.sfo file.
 // See https://psdevwiki.com/ps3/PARAM.SFO for file format.
-func sfoField(f afero.File, field string) (string, error) {
+func sfoField(f io.ReadSeeker, field string) (string, error) {
 	var hdr sfoHeader
 
 	if err := binary.Read(f, binary.LittleEndian, &hdr); err != nil {

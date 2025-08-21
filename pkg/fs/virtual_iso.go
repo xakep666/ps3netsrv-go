@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spf13/afero"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 const (
@@ -57,7 +57,7 @@ var paramSFOPath = filepath.Join("PS3_GAME", "PARAM.SFO")
 // In ps3 game mode we have to parse PARAM.SFO and get TITLE_ID to create sector 1 and
 // write full volume size to sector 0.
 type VirtualISO struct {
-	fs        afero.Fs
+	fs        handler.FS
 	root      string
 	ps3Mode   bool
 	createdAt time.Time
@@ -80,8 +80,8 @@ type VirtualISO struct {
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
 // Root path must be without ..'s.
-func NewVirtualISO(fs afero.Fs, root string, ps3Mode bool) (*VirtualISO, error) {
-	rootStat, err := fs.Stat(root)
+func NewVirtualISO(fsys handler.FS, root string, ps3Mode bool) (*VirtualISO, error) {
+	rootStat, err := fsys.Stat(root)
 	if err != nil {
 		return nil, fmt.Errorf("stat failed: %w", err)
 	}
@@ -96,7 +96,7 @@ func NewVirtualISO(fs afero.Fs, root string, ps3Mode bool) (*VirtualISO, error) 
 	}
 
 	ret := &VirtualISO{
-		fs:        fs,
+		fs:        fsys,
 		root:      root,
 		ps3Mode:   ps3Mode,
 		createdAt: time.Now(),
@@ -237,13 +237,13 @@ func (viso *VirtualISO) scanDirectory() error {
 			modTime: stat.ModTime(),
 		}
 
-		items, err := dir.Readdirnames(-1)
+		items, err := dir.ReadDir(-1)
 		if err != nil {
 			return fmt.Errorf("dir %s items get failed: %w", path, err)
 		}
 
 		for _, item := range items {
-			fullPath := filepath.Join(path, item)
+			fullPath := filepath.Join(path, item.Name())
 			itemStat, err := viso.fs.Stat(fullPath)
 			if err != nil {
 				return fmt.Errorf("item %s stat failed: %w", fullPath, err)
@@ -649,7 +649,7 @@ func (viso *VirtualISO) ReadAt(p []byte, off int64) (int, error) {
 
 func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 	if viso.isClosed {
-		return 0, afero.ErrFileClosed
+		return 0, fs.ErrClosed
 	}
 
 	offset := sizeBytes(off)
@@ -757,7 +757,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 
 func (viso *VirtualISO) Seek(offset int64, whence int) (int64, error) {
 	if viso.isClosed {
-		return 0, afero.ErrFileClosed
+		return 0, fs.ErrClosed
 	}
 
 	switch whence {
@@ -771,7 +771,7 @@ func (viso *VirtualISO) Seek(offset int64, whence int) (int64, error) {
 	}
 
 	if offset < 0 || sizeBytes(offset) > viso.totalSize {
-		return 0, afero.ErrOutOfRange
+		return 0, syscall.EINVAL
 	}
 
 	viso.offset = sizeBytes(offset)
@@ -783,7 +783,7 @@ func (viso *VirtualISO) Name() string {
 	return name
 }
 
-func (viso *VirtualISO) Readdir(count int) ([]fs.FileInfo, error) {
+func (viso *VirtualISO) ReadDir(count int) ([]fs.DirEntry, error) {
 	dir, err := viso.fs.Open(viso.root)
 	if err != nil {
 		return nil, err
@@ -791,31 +791,10 @@ func (viso *VirtualISO) Readdir(count int) ([]fs.FileInfo, error) {
 
 	defer dir.Close()
 
-	return dir.Readdir(count)
-}
-
-func (viso *VirtualISO) Readdirnames(n int) ([]string, error) {
-	dir, err := viso.fs.Open(viso.root)
-	if err != nil {
-		return nil, err
-	}
-
-	defer dir.Close()
-
-	return dir.Readdirnames(n)
+	return dir.ReadDir(count)
 }
 
 func (viso *VirtualISO) Stat() (fs.FileInfo, error) { return &virtualISOStat{viso}, nil }
-
-func (*VirtualISO) Write([]byte) (int, error) { return 0, syscall.EPERM }
-
-func (*VirtualISO) WriteAt([]byte, int64) (int, error) { return 0, syscall.EPERM }
-
-func (*VirtualISO) Truncate(int64) error { return syscall.EPERM }
-
-func (*VirtualISO) WriteString(string) (int, error) { return 0, syscall.EPERM }
-
-func (*VirtualISO) Sync() error { return nil }
 
 func (viso *VirtualISO) Close() error {
 	if viso.isClosed {

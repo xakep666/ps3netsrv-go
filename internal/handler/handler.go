@@ -10,8 +10,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/afero"
-
 	"github.com/xakep666/ps3netsrv-go/internal/copier"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
@@ -24,7 +22,7 @@ var ErrWriteForbidden = fmt.Errorf("write operation forbidden")
 type Context = server.Context[State]
 
 type Handler struct {
-	Fs afero.Fs
+	Fs FS
 
 	Copier     *copier.Copier
 	AllowWrite bool
@@ -35,7 +33,7 @@ func (h *Handler) HandleOpenDir(ctx *Context, path string) bool {
 
 	log.InfoContext(ctx, "Open dir")
 
-	handle, err := h.Fs.Open(path)
+	handle, err := h.Fs.Open(filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Open failed", logutil.ErrorAttr(err))
 		return false
@@ -71,10 +69,10 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 	}
 
 	for {
-		names, err := ctx.State.CwdHandle.Readdirnames(1)
+		items, err := ctx.State.CwdHandle.ReadDir(1)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.WarnContext(ctx, "Readdirnames failed", logutil.ErrorAttr(err))
+				log.WarnContext(ctx, "ReadDir failed", logutil.ErrorAttr(err))
 			}
 			if err := ctx.State.CwdHandle.Close(); err != nil {
 				log.WarnContext(ctx, "Close ctx.State.CwdHandle failed", logutil.ErrorAttr(err))
@@ -83,12 +81,13 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 			return nil
 		}
 
-		if names[0] == "." || names[0] == ".." {
+		name := items[0].Name()
+		if name == "." || name == ".." {
 			continue
 		}
 
 		// Stat to resolve symlink
-		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), names[0]))
+		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), name))
 		if err != nil {
 			log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
@@ -112,7 +111,7 @@ func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
 	log = log.With(slog.String("path", ctx.State.CwdHandle.Name()))
 	log.InfoContext(ctx, "Read dir")
 
-	entries, err := ctx.State.CwdHandle.Readdir(-1)
+	entries, err := ctx.State.CwdHandle.ReadDir(-1)
 	if err != nil {
 		log.WarnContext(ctx, "Read dir failed", logutil.ErrorAttr(err))
 		return []fs.FileInfo{}
@@ -120,16 +119,23 @@ func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
 
 	var files []fs.FileInfo
 	for _, entry := range entries {
-		if entry.Mode()&fs.ModeSymlink != 0 {
+		info, err := entry.Info()
+		if err != nil {
+			log.WarnContext(ctx, "Lstat failed", logutil.ErrorAttr(err))
+			// Ignore broken symbolic links
+			continue
+		}
+
+		if info.Mode()&fs.ModeSymlink != 0 {
 			// Stat to resolve symlink
-			entry, err = h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
+			info, err = h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
 			if err != nil {
 				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
 				continue
 			}
 		}
-		files = append(files, entry)
+		files = append(files, info)
 	}
 
 	return files
@@ -139,11 +145,11 @@ func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Stat file")
 
-	info, err := h.Fs.Stat(path)
+	info, err := h.Fs.Stat(filepath.FromSlash(path))
 	switch {
 	case errors.Is(err, nil):
 		return wrapFileInfoForExtendedTimes(info), nil
-	case errors.Is(err, afero.ErrFileNotFound):
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, err
 	default:
 		log.WarnContext(ctx, "Stat file failed", logutil.ErrorAttr(err))
@@ -163,7 +169,7 @@ func (h *Handler) HandleOpenFile(ctx *Context, path string) (fs.FileInfo, error)
 		ctx.State.ROFile = nil
 	}
 
-	f, err := h.Fs.Open(path)
+	f, err := h.Fs.Open(filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Open r/o file failed", logutil.ErrorAttr(err))
 		return nil, err
@@ -303,7 +309,7 @@ func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 	}
 
 	// path is a directory -> closing file, just return
-	stat, err := h.Fs.Stat(path)
+	stat, err := h.Fs.Stat(filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 		return err
@@ -312,7 +318,7 @@ func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 		return nil
 	}
 
-	f, err := h.Fs.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fs.ModePerm)
+	f, err := h.Fs.Create(filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Create file failed", logutil.ErrorAttr(err))
 		return err
@@ -355,7 +361,7 @@ func (h *Handler) HandleDeleteFile(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Remove(path); err != nil {
+	if err := h.Fs.Remove(filepath.FromSlash(path)); err != nil {
 		log.WarnContext(ctx, "Remove file failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -372,7 +378,7 @@ func (h *Handler) HandleMkdir(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Mkdir(path, os.ModePerm); err != nil {
+	if err := h.Fs.Mkdir(filepath.FromSlash(path), os.ModePerm); err != nil {
 		log.WarnContext(ctx, "Create directory failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -389,7 +395,7 @@ func (h *Handler) HandleRmdir(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Remove(path); err != nil {
+	if err := h.Fs.Remove(filepath.FromSlash(path)); err != nil {
 		log.WarnContext(ctx, "Remove directory failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -397,24 +403,26 @@ func (h *Handler) HandleRmdir(ctx *Context, path string) error {
 	return nil
 }
 
-// fsOnly needed to detach all "optional" interfaces like afero.Lstater.
-type fsOnly struct{ afero.Fs }
-
 func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 	log := slog.With(slog.String("path", path))
 	log.DebugContext(ctx, "Get directory size")
 
 	var size int64
-	// detach afero.Lstater interface to resolve symlinks in afero.Walk.
-	_ = afero.Walk(&fsOnly{h.Fs}, ".", func(path string, info fs.FileInfo, err error) error {
+
+	_ = WalkDir(h.Fs, filepath.FromSlash(path), func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
 			log.WarnContext(ctx, "Skipping path because of error",
 				slog.String("path", path), logutil.ErrorAttr(err))
 			return nil
 		}
 
-		if info.IsDir() {
+		if de.IsDir() {
 			return nil
+		}
+
+		info, err := h.Fs.Stat(path)
+		if err != nil {
+			return err
 		}
 
 		size += info.Size()

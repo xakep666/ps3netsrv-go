@@ -7,9 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
-	"github.com/spf13/afero"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 type fileType int
@@ -26,12 +25,21 @@ const (
 )
 
 type (
-	privateFs   = afero.Fs // alias to embed Fs but not expose it
-	privateFile = afero.File
+	privateFs   = handler.FS // alias to embed Fs but not expose it
+	privateFile = handler.File
 )
 
 type FS struct {
-	afero.Fs
+	root *os.Root
+}
+
+func NewFS(root string) (*FS, error) {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FS{root: rootFS}, nil
 }
 
 func translatePath(path string) (string, fileType) {
@@ -45,24 +53,14 @@ func translatePath(path string) (string, fileType) {
 	}
 }
 
-func (fsys *FS) Open(path string) (afero.File, error) {
-	return fsys.OpenFile(path, os.O_RDONLY, 0)
-}
-
-func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, error) {
-	modificationsEnabled := flags&(os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE) != 0
-
+func (fsys *FS) Open(path string) (handler.File, error) {
 	path, typ := translatePath(path)
 	if typ == virtualPS3ISOFile || typ == virtualISOFile {
-		if modificationsEnabled {
-			return nil, syscall.EPERM
-		}
-
-		return NewVirtualISO(fsys.Fs, path, typ == virtualPS3ISOFile)
+		return NewVirtualISO(fsys, path, typ == virtualPS3ISOFile)
 	}
 
-	f, err := fsys.Fs.OpenFile(path, flags, perm)
-	if err != nil || modificationsEnabled { // do not try wrappers if modifications enabled
+	f, err := fsys.root.Open(path)
+	if err != nil {
 		return f, err
 	}
 
@@ -76,7 +74,7 @@ func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, 
 		return f, nil
 	}
 
-	key, err := tryGetRedumpKey(fsys.Fs, path)
+	key, err := tryGetRedumpKey(fsys.root.FS(), path)
 	switch {
 	case errors.Is(err, nil):
 		ef, err := NewEncryptedISO(f, key, false)
@@ -86,7 +84,7 @@ func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, 
 		}
 
 		return ef, nil
-	case errors.Is(err, afero.ErrFileNotFound):
+	case errors.Is(err, fs.ErrNotExist):
 		// pass
 	default:
 		_ = f.Close()
@@ -125,4 +123,28 @@ func (fsys *FS) OpenFile(path string, flags int, perm fs.FileMode) (afero.File, 
 	}
 
 	return f, nil
+}
+
+func (fsys *FS) Create(name string) (handler.WritableFile, error) {
+	return fsys.root.Create(name)
+}
+
+func (fsys *FS) Stat(name string) (fs.FileInfo, error) {
+	return fsys.root.Stat(name)
+}
+
+func (fsys *FS) Remove(name string) error {
+	return fsys.root.Remove(name)
+}
+
+func (fsys *FS) Mkdir(name string, mode os.FileMode) error {
+	return fsys.root.Mkdir(name, mode)
+}
+
+func (fsys *FS) WriteFile(name string, data []byte, mode os.FileMode) error {
+	return fsys.root.WriteFile(name, data, mode)
+}
+
+func (fsys *FS) Close() error {
+	return fsys.root.Close()
 }

@@ -6,7 +6,7 @@ import (
 	"io"
 	"syscall"
 
-	"github.com/spf13/afero"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 const (
@@ -40,8 +40,8 @@ type ISO3k3y struct {
 	offset sizeBytes
 }
 
-// NewISO3k3y wraps afero.File to ISO3k3y.
-func NewISO3k3y(f afero.File) (*ISO3k3y, error) {
+// NewISO3k3y wraps File to ISO3k3y.
+func NewISO3k3y(f handler.File) (*ISO3k3y, error) {
 	curOffset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return nil, fmt.Errorf("get current offset failed: %w", err)
@@ -108,7 +108,7 @@ func (*ISO3k3y) WriteString(string) (int, error) { return 0, syscall.EPERM }
 
 // Test3k3yImage performs checks if it is 3k3y image and returns ErrNot3k3y if not.
 // If key is not empty then image is encrypted.
-func Test3k3yImage(f afero.File) ([]byte, error) {
+func Test3k3yImage(f handler.File) ([]byte, error) {
 	var data [_3k3yMaskedDataSize]byte
 
 	_, err := f.ReadAt(data[:], int64(_3k3yMaskedDataBegin))

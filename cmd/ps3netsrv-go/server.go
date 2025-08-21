@@ -15,8 +15,6 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/spf13/afero"
-	"go.uber.org/automaxprocs/maxprocs"
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
@@ -123,9 +121,14 @@ func (sapp *serverApp) server() error {
 		cop = copier.NewCopier()
 	}
 
+	root, err := fs.NewFS(sapp.Root)
+	if err != nil {
+		return fmt.Errorf("open root failed: %w", err)
+	}
+
 	s := server.Server[handler.State]{
 		Handler: &handler.Handler{
-			Fs:         &fs.FS{Fs: afero.NewBasePathFs(afero.NewOsFs(), sapp.Root)},
+			Fs:         root,
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
 		},
@@ -197,12 +200,7 @@ func (sapp *serverApp) warnLargeDir() {
 }
 
 func (sapp *serverApp) setupRuntime() {
-	_, err := maxprocs.Set(maxprocs.Logger(slog.Info))
-	if err != nil {
-		slog.Warn("maxprocs setup failed", logutil.ErrorAttr(err))
-	}
-
-	_, err = memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
+	_, err := memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
 	if err != nil {
 		slog.Warn("memlimit setup failed", logutil.ErrorAttr(err))
 	}

@@ -5,8 +5,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/afero"
-
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 )
 
@@ -17,7 +15,12 @@ type makeISOApp struct {
 }
 
 func (a *makeISOApp) Run() error {
-	viso, err := fs.NewVirtualISO(afero.OsFs{}, a.Directory, a.PS3Mode)
+	baseFS, err := fs.NewFS(a.Directory)
+	if err != nil {
+		return fmt.Errorf("failed to open directory: %w", err)
+	}
+
+	viso, err := fs.NewVirtualISO(baseFS, ".", a.PS3Mode)
 	if err != nil {
 		return fmt.Errorf("failed to build ISO: %w", err)
 	}

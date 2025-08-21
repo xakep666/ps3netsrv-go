@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/afero"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 const (
@@ -110,14 +110,14 @@ func (l dirItemList) size(joliet bool) sizeBytes {
 }
 
 type fileItem struct {
-	file afero.File // used for reduce opening count during reading
+	file handler.File // used for reduce opening count during reading
 
 	path string      // relative to base fs
 	size sizeBytes   // reported by Stat() or counted as sum for multipart files
 	rLBA sizeSectors // virtual address of file start, we use this to control boundaries during read
 }
 
-func (i *fileItem) openOnDemand(fs afero.Fs) (afero.File, error) {
+func (i *fileItem) openOnDemand(fs handler.FS) (handler.File, error) {
 	if i.file != nil {
 		return i.file, nil
 	}

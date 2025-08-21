@@ -3,15 +3,13 @@ package handler
 import (
 	"errors"
 	"fmt"
-
-	"github.com/spf13/afero"
 )
 
 type State struct {
-	CwdHandle    afero.File
-	ROFile       afero.File
+	CwdHandle    File
+	ROFile       File
 	CDSectorSize int // of ROFile, used by ReadCD2048Critical
-	WOFile       afero.File
+	WOFile       WritableFile
 }
 
 func (s *State) Close() error {
