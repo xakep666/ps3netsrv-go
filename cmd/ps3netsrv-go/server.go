@@ -15,7 +15,6 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
-	"github.com/spf13/afero"
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
@@ -122,9 +121,14 @@ func (sapp *serverApp) server() error {
 		cop = copier.NewCopier()
 	}
 
+	root, err := fs.NewFS(sapp.Root)
+	if err != nil {
+		return fmt.Errorf("open root failed: %w", err)
+	}
+
 	s := server.Server[handler.State]{
 		Handler: &handler.Handler{
-			Fs:         &fs.FS{Fs: afero.NewBasePathFs(afero.NewOsFs(), sapp.Root)},
+			Fs:         root,
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
 		},

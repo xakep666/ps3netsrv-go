@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 )
 
@@ -38,7 +37,7 @@ func (r *Reader) ReadOpenDir() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(dirPath), nil
+	return dirPath, nil
 }
 
 func (r *Reader) ReadStatFile() (string, error) {
@@ -54,7 +53,7 @@ func (r *Reader) ReadStatFile() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 func (r *Reader) ReadOpenFile() (string, error) {
@@ -70,7 +69,7 @@ func (r *Reader) ReadOpenFile() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 func (r *Reader) ReadReadFile() (bytesToRead uint32, offset uint64, err error) {
@@ -119,7 +118,7 @@ func (r *Reader) ReadCreateFile() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 func (r *Reader) ReadWriteFile() (io.Reader, error) {
@@ -146,7 +145,7 @@ func (r *Reader) ReadDeleteFile() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 func (r *Reader) ReadMkdir() (string, error) {
@@ -162,7 +161,7 @@ func (r *Reader) ReadMkdir() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 func (r *Reader) ReadRmdir() (string, error) {
@@ -178,7 +177,7 @@ func (r *Reader) ReadRmdir() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 func (r *Reader) ReadGetDirSize() (string, error) {
 	var cmd GetDirSizeCommand
@@ -193,7 +192,7 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 		return "", fmt.Errorf("readStringN failed: %w", err)
 	}
 
-	return filepath.FromSlash(filePath), nil
+	return filePath, nil
 }
 
 // readCommandTail reads remaining data of command.

@@ -3,7 +3,7 @@
 // For some messages Command can be followed by arbitrary data which length encoded in Command.Data.
 package proto
 
-//go:generate stringer -type OpCode
+//go:generate go tool golang.org/x/tools/cmd/stringer -type OpCode
 
 // OpCode is an operation code which read firstly.
 type OpCode uint16

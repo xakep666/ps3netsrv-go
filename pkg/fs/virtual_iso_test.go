@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -34,31 +33,33 @@ func TestMakeFullImage(t *testing.T) {
 
 	var bigFileHash []byte
 
-	baseFS := afero.NewBasePathFs(afero.NewOsFs(), t.TempDir())
+	baseFS, err := fs.NewFS(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baseFS.Close() })
 
-	require.NoError(t, baseFS.MkdirAll(isoRoot, os.ModePerm))
+	require.NoError(t, baseFS.Mkdir(isoRoot, os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(baseFS, filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
+		baseFS.WriteFile(filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
 	)
-	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir1"), os.ModePerm))
+	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1"), os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
+		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
 	)
-	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
+	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
+		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
 	)
 	require.NoError(t,
-		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
+		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
 	)
 
 	var multiSectorFile [3123]byte
-	_, err := io.ReadFull(rand.Reader, multiSectorFile[:])
+	_, err = io.ReadFull(rand.Reader, multiSectorFile[:])
 	require.NoError(t, err)
 
-	require.NoError(t, baseFS.MkdirAll(filepath.Join(isoRoot, "dir2"), os.ModePerm))
+	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir2"), os.ModePerm))
 	require.NoError(t,
-		afero.WriteFile(baseFS, filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
+		baseFS.WriteFile(filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
 	)
 
 	if !testing.Short() {

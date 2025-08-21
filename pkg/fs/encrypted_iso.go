@@ -7,12 +7,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
 
-	"github.com/spf13/afero"
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 const (
@@ -67,9 +68,9 @@ type EncryptedISO struct {
 	offset            sizeBytes // to track where we are now without calling Seek
 }
 
-// NewEncryptedISO wraps afero.File to EncryptedISO with provided "data1" key.
+// NewEncryptedISO wraps File to EncryptedISO with provided "data1" key.
 // "clearRegions" defines if regions header should be zeroed during reads, some software can't handle non-clear header.
-func NewEncryptedISO(f afero.File, data1 []byte, clearRegions bool) (*EncryptedISO, error) {
+func NewEncryptedISO(f handler.File, data1 []byte, clearRegions bool) (*EncryptedISO, error) {
 	// force seek to start for convenience
 	_, err := f.Seek(0, io.SeekStart)
 	if err != nil {
@@ -230,11 +231,11 @@ func (e *EncryptedISO) setIVForSector(sector sizeSectors, clone bool) cipher.Blo
 }
 
 // tryGetRedumpKey attempts to find encryption key for .iso image.
-func tryGetRedumpKey(fsys afero.Fs, requestedPath string) ([]byte, error) {
+func tryGetRedumpKey(fsys fs.FS, requestedPath string) ([]byte, error) {
 	// encryption makes sense only for .iso or .ISO file inside ps3ISO or PS3ISO directory
 	ext := filepath.Ext(requestedPath)
 	if strings.ToLower(ext) != isoExt {
-		return nil, afero.ErrFileNotFound
+		return nil, fs.ErrNotExist
 	}
 
 	pathElems := strings.Split(requestedPath, string(filepath.Separator))
@@ -242,7 +243,7 @@ func tryGetRedumpKey(fsys afero.Fs, requestedPath string) ([]byte, error) {
 		return strings.ToLower(s) == ps3isoDir
 	})
 	if ps3IsoIdx < 0 {
-		return nil, afero.ErrFileNotFound
+		return nil, fs.ErrNotExist
 	}
 
 	// try .dkey file first
