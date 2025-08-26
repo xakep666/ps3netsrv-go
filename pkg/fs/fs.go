@@ -25,7 +25,6 @@ const (
 )
 
 type (
-	privateFs   = handler.FS // alias to embed Fs but not expose it
 	privateFile = handler.File
 )
 
@@ -74,7 +73,7 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 		return f, nil
 	}
 
-	key, err := tryGetRedumpKey(fsys.root.FS(), path)
+	key, err := tryGetRedumpKey(fsys, path)
 	switch {
 	case errors.Is(err, nil):
 		ef, err := NewEncryptedISO(f, key, false)
