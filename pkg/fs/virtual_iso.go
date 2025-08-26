@@ -826,4 +826,4 @@ func (s virtualISOStat) ModTime() time.Time { return s.iso.createdAt }
 
 func (s virtualISOStat) IsDir() bool { return false }
 
-func (s virtualISOStat) Sys() interface{} { return nil }
+func (s virtualISOStat) Sys() any { return nil }

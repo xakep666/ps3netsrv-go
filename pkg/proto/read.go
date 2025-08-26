@@ -196,7 +196,7 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 }
 
 // readCommandTail reads remaining data of command.
-func (r *Reader) readCommandTail(tail interface{}) error {
+func (r *Reader) readCommandTail(tail any) error {
 	_, err := binary.Decode(r.cmd.Data[:], binary.BigEndian, tail)
 	if err != nil {
 		return fmt.Errorf("binary.Decode failed: %w", err)

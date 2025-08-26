@@ -50,7 +50,7 @@ string=two value
 	assert.True(t, cli.Bool)
 }
 
-func mustNew(t *testing.T, cli interface{}, options ...kong.Option) *kong.Kong {
+func mustNew(t *testing.T, cli any, options ...kong.Option) *kong.Kong {
 	t.Helper()
 	options = append([]kong.Option{
 		kong.Name("test"),

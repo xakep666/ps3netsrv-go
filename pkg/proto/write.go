@@ -285,7 +285,7 @@ func (w *Writer) SendReadFileResultLen(dataLen int32) error {
 	return nil
 }
 
-func (w *Writer) sendResult(data interface{}) error {
+func (w *Writer) sendResult(data any) error {
 	// we can send string directly
 	if str, ok := data.(string); ok {
 		_, err := io.WriteString(w.Writer, str)
