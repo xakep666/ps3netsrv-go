@@ -53,7 +53,7 @@ func reportDirError(name string, err error, d fs.DirEntry, walkDirFn fs.WalkDirF
 
 func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) error {
 	if err := walkDirFn(name, d, nil); err != nil || !d.IsDir() {
-		if err == fs.SkipDir && d.IsDir() {
+		if errors.Is(err, fs.SkipDir) && d.IsDir() {
 			// Successfully skipped directory.
 			err = nil
 		}
@@ -80,7 +80,7 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 		for _, d1 := range dirs {
 			name1 := path.Join(name, d1.Name())
 			if err := walkDir(fsys, name1, d1, walkDirFn); err != nil {
-				if err == fs.SkipDir {
+				if errors.Is(err, fs.SkipDir) {
 					break
 				}
 				return err

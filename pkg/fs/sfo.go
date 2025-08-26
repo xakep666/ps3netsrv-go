@@ -44,7 +44,7 @@ func sfoField(f io.ReadSeeker, field string) (string, error) {
 		br       bufio.Reader
 	)
 
-	for i := uint32(0); i < hdr.TableEntriesCount; i++ {
+	for i := range hdr.TableEntriesCount {
 		var e sfoIndexTableEntry
 
 		indexEntryOff := binary.Size(hdr) + int(i)*binary.Size(e)

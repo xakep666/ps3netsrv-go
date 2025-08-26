@@ -201,7 +201,7 @@ func (l filesList) filesToRead(toRead, offset sizeBytes) iter.Seq[*fileItem] {
 }
 
 func fixDirLBA(entries []directoryEntry, dirLBA, filesLBA sizeSectors) {
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 		if entries[i].FileFlags&dirFlagDir > 0 {
 			entries[i].ExtentLocation += dirLBA
 		} else {
@@ -213,7 +213,7 @@ func fixDirLBA(entries []directoryEntry, dirLBA, filesLBA sizeSectors) {
 type pathTable []pathTableEntry
 
 func (t pathTable) fixLBA(dirLBA sizeSectors) {
-	for i := 0; i < len(t); i++ {
+	for i := range t {
 		t[i].DirLocation += dirLBA
 	}
 }
