@@ -37,6 +37,7 @@ type serverApp struct {
 	MaxClients            int              `help:"Limit amount of connected clients. Negative or zero means no limit." env:"PS3NETSRV_MAX_CLIENTS"`
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')." env:"PS3NETSRV_CLIENT_WHITELIST"`
 	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations." env:"PS3NETSRV_ALLOW_WRITE"`
+	StrictRoot            bool             `help:"Stricter root protection from path traversal, referencing to outside symlinks, etc. Highly recommended if you plan to expose server outside of local network." env:"PS3NETSRV_STRICT_ROOT"`
 	// default value found during debugging
 	BufferSize int64 `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k" env:"PS3NETSRV_BUFFER_SIZE"`
 }
@@ -121,14 +122,17 @@ func (sapp *serverApp) server() error {
 		cop = copier.NewCopier()
 	}
 
-	root, err := fs.NewFS(sapp.Root)
-	if err != nil {
-		return fmt.Errorf("open root failed: %w", err)
+	sysRoot := fs.SystemRoot(fs.NewRelaxedSystemRoot(sapp.Root))
+	if sapp.StrictRoot {
+		sysRoot, err = os.OpenRoot(sapp.Root)
+		if err != nil {
+			return fmt.Errorf("open root failed: %w", err)
+		}
 	}
 
 	s := server.Server[handler.State]{
 		Handler: &handler.Handler{
-			Fs:         root,
+			Fs:         fs.NewFS(sysRoot),
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
 		},
@@ -152,6 +156,10 @@ func (sapp *serverApp) warnRoot() {
 			slog.Warn("Running as root/administrator with write access is dangerous! This may damage your data!")
 		} else {
 			slog.Warn("Running as root/administrator is not recommended! Please run as a regular user.")
+		}
+
+		if !sapp.StrictRoot {
+			slog.Warn("Running as root/administrator without strict root access is dangerous! This may lead to data stealing!")
 		}
 	}
 }

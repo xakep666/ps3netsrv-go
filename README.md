@@ -78,6 +78,7 @@ You can build ISO image using `makeiso` subcommand.
 
 ## Exposing tips
 * Use limits:
+    * strict root to prevent possible directory traversal outside provided root: `--strict-root` flag
     * by IP address(es) using `--client-whitelist` flag: `$ ps3netsrv-go server --root=/home/games --client-whitelist=192.168.0.123`
     * by number of clients using `--max-clients` flag
     * idle connection time: `--read-timeout` flag

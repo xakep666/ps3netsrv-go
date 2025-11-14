@@ -28,17 +28,21 @@ type (
 	privateFile = handler.File
 )
 
-type FS struct {
-	root *os.Root
+// SystemRoot needed to abstract *os.Root and it's relaxed implementation that allows outside symlinks.
+type SystemRoot interface {
+	Open(path string) (*os.File, error)
+	Create(path string) (*os.File, error)
+	Stat(path string) (fs.FileInfo, error)
+	Remove(path string) error
+	Mkdir(path string, mode os.FileMode) error
 }
 
-func NewFS(root string) (*FS, error) {
-	rootFS, err := os.OpenRoot(root)
-	if err != nil {
-		return nil, err
-	}
+type FS struct {
+	root SystemRoot
+}
 
-	return &FS{root: rootFS}, nil
+func NewFS(root SystemRoot) *FS {
+	return &FS{root: root}
 }
 
 func translatePath(path string) (string, fileType) {
@@ -138,12 +142,4 @@ func (fsys *FS) Remove(name string) error {
 
 func (fsys *FS) Mkdir(name string, mode os.FileMode) error {
 	return fsys.root.Mkdir(strings.TrimPrefix(name, string(filepath.Separator)), mode)
-}
-
-func (fsys *FS) WriteFile(name string, data []byte, mode os.FileMode) error {
-	return fsys.root.WriteFile(strings.TrimPrefix(name, string(filepath.Separator)), data, mode)
-}
-
-func (fsys *FS) Close() error {
-	return fsys.root.Close()
 }

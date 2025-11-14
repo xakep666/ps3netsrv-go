@@ -33,24 +33,27 @@ func TestMakeFullImage(t *testing.T) {
 
 	var bigFileHash []byte
 
-	baseFS, err := fs.NewFS(t.TempDir())
+	root, err := os.OpenRoot(t.TempDir())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = baseFS.Close() })
+
+	baseFS := fs.NewFS(root)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
 
 	require.NoError(t, baseFS.Mkdir(isoRoot, os.ModePerm))
 	require.NoError(t,
-		baseFS.WriteFile(filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
+		root.WriteFile(filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
 	)
 	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1"), os.ModePerm))
 	require.NoError(t,
-		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
+		root.WriteFile(filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
 	)
 	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
 	require.NoError(t,
-		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
+		root.WriteFile(filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
 	)
 	require.NoError(t,
-		baseFS.WriteFile(filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
+		root.WriteFile(filepath.Join(isoRoot, "dir1", "c.txt"), []byte("c content"), os.ModePerm),
 	)
 
 	var multiSectorFile [3123]byte
@@ -59,7 +62,7 @@ func TestMakeFullImage(t *testing.T) {
 
 	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir2"), os.ModePerm))
 	require.NoError(t,
-		baseFS.WriteFile(filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
+		root.WriteFile(filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
 	)
 
 	if !testing.Short() {
