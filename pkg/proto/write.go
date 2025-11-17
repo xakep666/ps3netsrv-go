@@ -285,7 +285,7 @@ func (w *Writer) SendReadFileResultLen(dataLen int32) error {
 	return nil
 }
 
-func (w *Writer) sendResult(data interface{}) error {
+func (w *Writer) sendResult(data any) error {
 	// we can send string directly
 	if str, ok := data.(string); ok {
 		_, err := io.WriteString(w.Writer, str)
@@ -307,11 +307,11 @@ func fileInfoTimes(info fs.FileInfo) (mtime, ctime, atime uint64) {
 	atime = mtime
 	ctime = mtime
 
-	if accessTime, ok := info.(AccessTimeFileInfo); ok {
+	if accessTime, ok := info.(AccessTimeFileInfo); ok && !accessTime.AccessTime().IsZero() {
 		atime = uint64(accessTime.AccessTime().UTC().Unix())
 	}
 
-	if changeTime, ok := info.(AccessChangeTimeFileInfo); ok {
+	if changeTime, ok := info.(AccessChangeTimeFileInfo); ok && !changeTime.ChangeTime().IsZero() {
 		ctime = uint64(changeTime.ChangeTime().UTC().Unix())
 	}
 

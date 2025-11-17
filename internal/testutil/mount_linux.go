@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -11,17 +13,10 @@ const (
 	MultiExtentFileSupported = true
 )
 
-// IOCTL consts
-const (
-	loopSetFd      = 0x4C00
-	loopCtlGetFree = 0x4C82
-	loopClrFd      = 0x4C01
-)
-
 // syscalls will return an errno type (which implements error) for all calls,
 // including success (errno 0). We only care about non-zero errnos.
-func errnoIsErr(err error) error {
-	if err.(syscall.Errno) != 0 {
+func errnoIsErr(err syscall.Errno) error {
+	if err != 0 {
 		return err
 	}
 	return nil
@@ -31,10 +26,10 @@ func errnoIsErr(err error) error {
 // to the image to loop mount (such as a squashfs or ext4fs image), preform
 // the required call to loop the image to the provided block device.
 func loop(loopbackDevice, image *os.File) error {
-	_, _, err := syscall.Syscall(
-		syscall.SYS_IOCTL,
+	_, _, err := unix.Syscall(
+		unix.SYS_IOCTL,
 		loopbackDevice.Fd(),
-		loopSetFd,
+		unix.LOOP_SET_FD,
 		image.Fd(),
 	)
 	return errnoIsErr(err)
@@ -43,7 +38,7 @@ func loop(loopbackDevice, image *os.File) error {
 // Given a handle to the Loopback device (such as /dev/loop0), preform the
 // required call to the image to unloop the file.
 func unloop(loopbackDevice *os.File) error {
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, loopbackDevice.Fd(), loopClrFd, 0)
+	_, _, err := unix.Syscall(unix.SYS_IOCTL, loopbackDevice.Fd(), unix.LOOP_CLR_FD, 0)
 	return errnoIsErr(err)
 }
 
@@ -62,13 +57,13 @@ func nextLoopDevice() (*os.File, error) {
 // Return the integer of the next loopback device we can use by calling
 // loop-control with the LOOP_CTL_GET_FREE ioctl.
 func nextUnallocatedLoop() (int, error) {
-	fd, err := os.OpenFile("/dev/loop-control", os.O_RDONLY, 0644)
+	fd, err := unix.Open("/dev/loop-control", os.O_RDONLY, 0644)
 	if err != nil {
 		return 0, err
 	}
-	defer fd.Close()
-	index, _, err := syscall.Syscall(syscall.SYS_IOCTL, fd.Fd(), loopCtlGetFree, 0)
-	return int(index), errnoIsErr(err)
+	defer unix.Close(fd)
+	index, _, sysErr := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), unix.LOOP_CTL_GET_FREE, 0)
+	return int(index), errnoIsErr(sysErr)
 }
 
 func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
@@ -94,7 +89,7 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 		return "", nil, fmt.Errorf("loop failed: %w", err)
 	}
 
-	if err := syscall.Mount(lo.Name(), tempDir, "iso9660", syscall.MS_RDONLY, ""); err != nil {
+	if err := unix.Mount(lo.Name(), tempDir, "iso9660", unix.MS_RDONLY, ""); err != nil {
 		unloop(lo)
 		lo.Close()
 		return "", nil, fmt.Errorf("mount failed: %w", err)
@@ -104,7 +99,7 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 		defer os.Remove(tempDir)
 		defer lo.Close()
 
-		if err := syscall.Unmount(targetPath, 0); err != nil {
+		if err := unix.Unmount(targetPath, 0); err != nil {
 			return fmt.Errorf("loop unmount failed: %w", err)
 		}
 

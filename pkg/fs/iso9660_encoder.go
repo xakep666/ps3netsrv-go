@@ -73,7 +73,7 @@ func (e *iso9660encoder) appendBytesFixed(b []byte, fixedLen sizeBytes) {
 	e.appendZeroes(fixedLen - inLen)
 }
 
-func (e *iso9660encoder) appendFormat(format string, args ...interface{}) {
+func (e *iso9660encoder) appendFormat(format string, args ...any) {
 	*e = fmt.Appendf(*e, format, args...)
 }
 

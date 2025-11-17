@@ -7,7 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"path/filepath"
+	"path"
 	"time"
 
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
@@ -187,9 +187,9 @@ func (s *Server[StateT]) handleOpenFile(ctx *Context[StateT]) error {
 		return fmt.Errorf("read file to open path failed: %w", err)
 	}
 
-	filePath = filepath.Clean(filePath)
+	filePath = path.Clean(filePath)
 
-	if _, name := filepath.Split(filePath); name == "CLOSEFILE" {
+	if _, name := path.Split(filePath); name == "CLOSEFILE" {
 		s.Handler.HandleCloseFile(ctx)
 		return ctx.wr.SendOpenFileForCLOSEFILE()
 	}

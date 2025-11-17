@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"runtime"
 	"syscall"
@@ -76,6 +75,8 @@ type VirtualISO struct {
 	fsBuf        iso9660encoder // binary-encoded filesystem structures
 	files        filesList      // ordered by location list of files to read from fs
 	offset       sizeBytes      // used during Read and Seek
+
+	readDirRoot handler.File // used for ReadDir implementation
 }
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
@@ -88,11 +89,6 @@ func NewVirtualISO(fsys handler.FS, root string, ps3Mode bool) (*VirtualISO, err
 
 	if !rootStat.IsDir() {
 		return nil, ErrNotDirectory
-	}
-
-	// add path separator to end for empty root
-	if root == "" {
-		root += string(os.PathSeparator)
 	}
 
 	ret := &VirtualISO{
@@ -334,7 +330,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			}
 		}
 
-		for i := 0; i < parts; i++ {
+		for i := range parts {
 			entry := directoryEntry{
 				Identifier:           makeIdentifier(fileItem.name, joliet),
 				RecordingDateTime:    recordingTimestamp(fileItem.modTime),
@@ -721,7 +717,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 					remain = toWrite
 				}
 
-				for i := sizeBytes(0); i < toWrite; i++ {
+				for i := range toWrite {
 					buf[i] = 0
 				}
 				buf = buf[toWrite:]
@@ -739,11 +735,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 			return read, nil
 		}
 
-		if toRead > remain {
-			toRead = remain
-		}
-
-		for i := sizeBytes(0); i < remain; i++ {
+		for i := range remain {
 			buf[i] = 0
 		}
 
@@ -779,19 +771,20 @@ func (viso *VirtualISO) Seek(offset int64, whence int) (int64, error) {
 }
 
 func (viso *VirtualISO) Name() string {
-	_, name := filepath.Split(viso.root)
-	return name
+	return viso.root
 }
 
 func (viso *VirtualISO) ReadDir(count int) ([]fs.DirEntry, error) {
-	dir, err := viso.fs.Open(viso.root)
-	if err != nil {
-		return nil, err
+	if viso.readDirRoot == nil {
+		r, err := viso.fs.Open(viso.root)
+		if err != nil {
+			return nil, fmt.Errorf("open root dir: %w", err)
+		}
+
+		viso.readDirRoot = r
 	}
 
-	defer dir.Close()
-
-	return dir.ReadDir(count)
+	return viso.readDirRoot.ReadDir(count)
 }
 
 func (viso *VirtualISO) Stat() (fs.FileInfo, error) { return &virtualISOStat{viso}, nil }
@@ -803,6 +796,11 @@ func (viso *VirtualISO) Close() error {
 
 	var errs []error
 	viso.isClosed = true
+	if viso.readDirRoot != nil {
+		if err := viso.readDirRoot.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close read dir root failed: %w", err))
+		}
+	}
 	for i := range viso.files {
 		if err := viso.files[i].closeOpened(); err != nil {
 			errs = append(errs, fmt.Errorf("file %s close failed: %w", viso.files[i].path, err))
@@ -826,4 +824,4 @@ func (s virtualISOStat) ModTime() time.Time { return s.iso.createdAt }
 
 func (s virtualISOStat) IsDir() bool { return false }
 
-func (s virtualISOStat) Sys() interface{} { return nil }
+func (s virtualISOStat) Sys() any { return nil }

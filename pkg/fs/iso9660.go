@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	stdUnicode "unicode"
 
@@ -45,6 +46,32 @@ const (
 )
 
 var standardIdentifierBytes = [5]byte{'C', 'D', '0', '0', '1'}
+
+var (
+	aCharactersSet = sync.OnceValue(func() map[rune]struct{} {
+		m := make(map[rune]struct{}, len(aCharacters))
+		for _, r := range aCharacters {
+			m[r] = struct{}{}
+		}
+		return m
+	})
+
+	dCharactersSet = sync.OnceValue(func() map[rune]struct{} {
+		m := make(map[rune]struct{}, len(dCharacters))
+		for _, r := range dCharacters {
+			m[r] = struct{}{}
+		}
+		return m
+	})
+
+	d1CharactersSet = sync.OnceValue(func() map[rune]struct{} {
+		m := make(map[rune]struct{}, len(d1Characters))
+		for _, r := range d1Characters {
+			m[r] = struct{}{}
+		}
+		return m
+	})
+)
 
 // types to minimize mixing of bytes and sector units
 
@@ -337,15 +364,15 @@ func volumeDescriptorTimestampFromTime(t time.Time) volumeDescriptorTimestamp {
 }
 
 func mangleStrA(in string, joliet bool) stringA {
+	set := aCharactersSet()
 	ret := strings.Map(func(r rune) rune {
-		for _, i := range aCharacters {
-			if r == i {
-				return r
-			}
+		if _, ok := set[r]; ok {
+			return r
+		}
 
-			if upper := stdUnicode.ToUpper(r); upper == i {
-				return upper
-			}
+		upper := stdUnicode.ToUpper(r)
+		if _, ok := set[upper]; ok {
+			return upper
 		}
 
 		return '_'
@@ -359,15 +386,15 @@ func mangleStrA(in string, joliet bool) stringA {
 }
 
 func mangleStrD(in string, joliet bool) stringD {
+	set := dCharactersSet()
 	ret := strings.Map(func(r rune) rune {
-		for _, i := range dCharacters {
-			if r == i {
-				return r
-			}
+		if _, ok := set[r]; ok {
+			return r
+		}
 
-			if upper := stdUnicode.ToUpper(r); upper == i {
-				return upper
-			}
+		upper := stdUnicode.ToUpper(r)
+		if _, ok := set[upper]; ok {
+			return upper
 		}
 
 		return '_'
@@ -381,11 +408,10 @@ func mangleStrD(in string, joliet bool) stringD {
 }
 
 func mangleStrD1(in string, joliet bool) stringD1 {
+	set := d1CharactersSet()
 	ret := strings.Map(func(r rune) rune {
-		for _, i := range d1Characters {
-			if r == i {
-				return r
-			}
+		if _, ok := set[r]; ok {
+			return r
 		}
 
 		return '_'

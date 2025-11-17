@@ -15,11 +15,7 @@ type makeISOApp struct {
 }
 
 func (a *makeISOApp) Run() error {
-	baseFS, err := fs.NewFS(a.Directory)
-	if err != nil {
-		return fmt.Errorf("failed to open directory: %w", err)
-	}
-
+	baseFS := fs.NewFS(fs.NewRelaxedSystemRoot(a.Directory))
 	viso, err := fs.NewVirtualISO(baseFS, ".", a.PS3Mode)
 	if err != nil {
 		return fmt.Errorf("failed to build ISO: %w", err)

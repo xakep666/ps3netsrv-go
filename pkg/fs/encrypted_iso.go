@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
@@ -208,14 +207,6 @@ func (e *EncryptedISO) decryptData(start sizeBytes, data []byte, cloneCBC bool) 
 	}
 }
 
-func (*EncryptedISO) Write([]byte) (int, error) { return 0, syscall.EPERM }
-
-func (*EncryptedISO) WriteAt([]byte, int64) (int, error) { return 0, syscall.EPERM }
-
-func (*EncryptedISO) Truncate(int64) error { return syscall.EPERM }
-
-func (*EncryptedISO) WriteString(string) (int, error) { return 0, syscall.EPERM }
-
 func (e *EncryptedISO) setIVForSector(sector sizeSectors, clone bool) cipher.BlockMode {
 	if !clone { // called from Read, may reuse state
 		binary.BigEndian.PutUint32(e.iv[len(e.iv)-4:], uint32(sector))
@@ -231,7 +222,7 @@ func (e *EncryptedISO) setIVForSector(sector sizeSectors, clone bool) cipher.Blo
 }
 
 // tryGetRedumpKey attempts to find encryption key for .iso image.
-func tryGetRedumpKey(fsys fs.FS, requestedPath string) ([]byte, error) {
+func tryGetRedumpKey(fsys handler.FS, requestedPath string) ([]byte, error) {
 	// encryption makes sense only for .iso or .ISO file inside ps3ISO or PS3ISO directory
 	ext := filepath.Ext(requestedPath)
 	if strings.ToLower(ext) != isoExt {

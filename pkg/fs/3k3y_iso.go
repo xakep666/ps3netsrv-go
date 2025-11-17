@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"syscall"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
@@ -97,14 +96,6 @@ func (iso *ISO3k3y) Seek(offset int64, whence int) (int64, error) {
 	iso.offset = sizeBytes(newOffset)
 	return newOffset, nil
 }
-
-func (*ISO3k3y) Write([]byte) (int, error) { return 0, syscall.EPERM }
-
-func (*ISO3k3y) WriteAt([]byte, int64) (int, error) { return 0, syscall.EPERM }
-
-func (*ISO3k3y) Truncate(int64) error { return syscall.EPERM }
-
-func (*ISO3k3y) WriteString(string) (int, error) { return 0, syscall.EPERM }
 
 // Test3k3yImage performs checks if it is 3k3y image and returns ErrNot3k3y if not.
 // If key is not empty then image is encrypted.

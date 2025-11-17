@@ -12,7 +12,7 @@ type Copier struct {
 func NewPooledCopier(defaultBufferSize int64) *Copier {
 	return &Copier{
 		pool: &sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				ret := make([]byte, defaultBufferSize)
 				return &ret
 			},
