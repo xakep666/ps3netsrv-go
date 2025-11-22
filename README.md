@@ -98,6 +98,9 @@ to enable automatic startup.
 
 Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`.
 
+### Windows
+To run as a service it's recommended to use [NSSM](https://nssm.cc/usage). It allows to specify user, startup args and environment variables. 
+
 ## Performance tips
 * Connect your console to the network using ethernet cable. To achieve maximum performance server and console
 should be connected with 1Gbps network.
