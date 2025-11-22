@@ -21,25 +21,12 @@ $ ps3netsrv-go decrypt
 ```
 tool to decrypt images.
 
-## Running
-Just run
-```bash
-$ ps3netsrv-go server
-```
-from your working directory to serve it.
-
-Or specify custom root directory in `--root` flag of `server` subcommand:
-```bash
-$ ps3netsrv-go server --root=/home/user/games
-```
-
-To get help run:
-
-```bash
-$ ps3netsrv-go --help
-```
-
-To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` flag.
+## Installation
+This project shipped in a multiple ways for convenient installation:
+* Docker images: [`docker pull ghcr.io/xakep666/ps3netsrv-go`](https://ghcr.io/xakep666/ps3netsrv-go). `amd64` and `arm64` images are available.
+* Linux packages: deb, rpm and archlinux. See [Releases](https://github.com/xakep666/ps3netsrv-go/releases). 
+If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go.service).
+* Archived binaries are also available in Releases.
 
 ## Configuration
 Server supports configuration via environment variables and command line flags.
@@ -68,6 +55,49 @@ Config file discovered in following order:
   * `$XDG_CONFIG_HOME` or `~/.config` on Linux
   * `~/Library/Application Support` on macOS
 
+## Running
+### Simple binary
+Download necessary archive from Releases, unpack it and run
+```bash
+$ ps3netsrv-go server
+```
+from your working directory to serve it.
+
+Or specify custom root directory in `--root` flag of `server` subcommand:
+```bash
+$ ps3netsrv-go server --root=/home/user/games
+```
+
+To get help run:
+
+```bash
+$ ps3netsrv-go --help
+```
+
+To run "debug" server (for pprof, etc.) specify `--debug-server-listen-addr` flag.
+
+### Docker
+Recommended way to serve your directory is:
+```bash
+$ docker run \
+  -u $(id -u):$(id -g) \
+  -v <data directory>:/srv/ps3data \
+  -p 38008:38008 \
+  ghcr.io/xakep666/ps3netsrv-go
+```
+But note that listen address displayed in logs is not an address you can connect to because it's container internal address.
+In-container persistent volume is also available in `/srv/ps3data`.
+
+### Systemd service
+Deb, rpm and archlinux packages are shipped with systemd unit. Run
+```bash
+$ systemctl daemon-reload
+$ systemctl enable ps3netsrv-go
+```
+to enable automatic startup.
+
+Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`.
+
 ## Performance tips
 * Connect your console to the network using ethernet cable. To achieve maximum performance server and console
 should be connected with 1Gbps network.
@@ -89,7 +119,7 @@ You can build ISO image using `makeiso` subcommand.
 * To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
-[Go 1.23+](https://go.dev/dl/)
+[Go 1.25+](https://go.dev/dl/)
 
 ## Building
 ```bash

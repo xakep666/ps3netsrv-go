@@ -1,0 +1,13 @@
+[Unit]
+Description=PS3 Network Server (go version)
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/ps3netsrv-go server --config=/etc/ps3netsrv-go/config.ini
+User=ps3netsrv
+Group=ps3netsrv
+
+[Install]
+WantedBy=multi-user.target
