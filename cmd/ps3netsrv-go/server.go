@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -209,7 +210,13 @@ func (sapp *serverApp) warnLargeDir() {
 
 func (sapp *serverApp) setupRuntime() {
 	_, err := memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
-	if err != nil {
+	switch {
+	case errors.Is(err, nil),
+		errors.Is(err, memlimit.ErrCgroupsNotSupported),
+		errors.Is(err, memlimit.ErrNoCgroup),
+		errors.Is(err, memlimit.ErrNoLimit):
+		// pass
+	default:
 		slog.Warn("memlimit setup failed", logutil.ErrorAttr(err))
 	}
 }
