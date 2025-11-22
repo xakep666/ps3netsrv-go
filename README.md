@@ -89,7 +89,7 @@ You can build ISO image using `makeiso` subcommand.
 * To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
-[Go 1.23+](https://go.dev/dl/)
+[Go 1.25+](https://go.dev/dl/)
 
 ## Building
 ```bash
