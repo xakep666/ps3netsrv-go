@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
+	"strings"
 
 	"github.com/alecthomas/kong"
 
@@ -17,10 +20,7 @@ const (
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-	builtBy = "unknown"
+	Version = "dev"
 )
 
 type app struct {
@@ -39,7 +39,7 @@ func main() {
 		kong.Description("Alternative ps3netsrv implementation for installing games over network."),
 		kong.Configuration(kongini.Loader, configLocations()...),
 		kong.Vars{
-			"version": fmt.Sprintf("%s (commit '%s' at '%s' build by '%s')", version, commit, date, builtBy),
+			"version": versionString(),
 		},
 		kong.UsageOnError(),
 		kongutil.OutputFileMapper,
@@ -48,6 +48,43 @@ func main() {
 	ctx, err := k.Parse(translateArgs(os.Args[1:]))
 	k.FatalIfErrorf(err)
 	k.FatalIfErrorf(ctx.Run())
+}
+
+func versionString() string {
+	var sb strings.Builder
+	sb.WriteString("ps3netsrv-go version ")
+	sb.WriteString(Version)
+
+	if runtimeVersion := runtime.Version(); runtimeVersion != "" {
+		_, _ = fmt.Fprintf(&sb, " built with %s", runtimeVersion)
+	}
+
+	var vcsType, vcsRevision, vcsTime string
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range buildInfo.Settings {
+			if setting.Key == "vcs" {
+				vcsType = setting.Value
+			}
+			if setting.Key == "vcs.revision" {
+				vcsRevision = setting.Value
+			}
+			if setting.Key == "vcs.time" {
+				vcsTime = setting.Value
+			}
+		}
+	}
+
+	// for "git" vcs clip revision to 7 characters (default git behavior)
+	if vcsRevision != "" {
+		if vcsType == "git" {
+			vcsRevision = vcsRevision[:7]
+		}
+		_, _ = fmt.Fprintf(&sb, " from %s", vcsRevision)
+	}
+	if vcsTime != "" {
+		_, _ = fmt.Fprintf(&sb, " on %s", vcsTime)
+	}
+	return sb.String()
 }
 
 func configLocations() []string {
