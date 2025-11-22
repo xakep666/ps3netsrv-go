@@ -1,6 +1,7 @@
 version: 2
 before:
   hooks:
+    - go mod tidy
     - go mod download
 builds:
   - env:
@@ -9,22 +10,84 @@ builds:
       - linux
       - windows
       - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    ignore:
+      - goos: windows
+        goarch: arm     
     main: ./cmd/ps3netsrv-go
     ldflags:
-      - "-w"
-      - "-s"
+      - "-w -s"
+      - "-X 'main.Version=v{{ .Version }}'"
+    flags:
+      - -trimpath
+    mod_timestamp: "{{ .CommitTimestamp }}"
 archives:
   - name_template: >-
-      {{ .ProjectName }}_
+      {{ .ProjectName }}_{{ .Version }}_
       {{- if eq .Os "darwin" }}MacOS
       {{- else }}{{ title .Os }}{{ end }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
+    formats: [ 'tar.gz' ]
+    format_overrides:
+      - goos: windows
+        formats: [ 'zip' ]
+dockers_v2:
+  - images:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
+    tags:
+      - "v{{ .Version }}"
+      - "v{{ .Major }}.{{ .Minor }}"
+      - "latest"
+    dockerfile: package/docker/goreleaser.Dockerfile
+    labels:
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.version": "v{{ .Version }}"
+      "org.opencontainers.image.source": "{{ .GitURL }}"
+      "org.opencontainers.image.licenses": "MIT"
+    extra_files:
+      - package/layout
+nfpms:
+  - homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
+    description: |-
+      Server application used to stream content from a local storage to PS3 (go version).
+    maintainer: Vladimir Stoliarov <github@vstoliarov.me>
+    file_name_template: >-
+      {{- trimsuffix .ConventionalFileName .ConventionalExtension -}}
+      {{- if and (eq .Arm "6") (eq .ConventionalExtension ".deb") }}6{{ end -}}
+      {{- if not (eq .Amd64 "v1")}}{{ .Amd64 }}{{ end -}}
+      {{- .ConventionalExtension -}}
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    contents:
+      - src: package/linux/ps3netsrv-go.service
+        dst: /usr/lib/systemd/system/ps3netsrv-go.service
+      - src: package/linux/config.ini
+        dst: /etc/ps3netsrv-go/config.ini
+        type: "config|noreplace"
+        file_info:
+          mode: 0755
+          owner: ps3netsrv
+          group: ps3netsrv
+      - src: package/layout/
+        dst: /srv/ps3data/
+        type: tree
+        file_info:
+          mode: 0775
+          owner: ps3netsrv
+          group: ps3netsrv
+    scripts:
+      preinstall: package/linux/preinstall.sh
 checksum:
   name_template: 'checksums.txt'
-snapshot:
-  name_template: "{{ .Tag }}"
 changelog:
   sort: asc
   filters:
