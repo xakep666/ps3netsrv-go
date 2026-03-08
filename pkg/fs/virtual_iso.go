@@ -630,27 +630,14 @@ func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 	return nil
 }
 
-func (viso *VirtualISO) Read(p []byte) (int, error) {
-	nw, err := viso.read(p, int64(viso.offset))
-
-	viso.offset += sizeBytes(nw)
-	return int(nw), err
-}
-
-func (viso *VirtualISO) ReadAt(p []byte, off int64) (int, error) {
-	// TODO: make ReadAt able to work from multiple goroutines without data races
-	nw, err := viso.read(p, off)
-	return int(nw), err
-}
-
-func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
+func (viso *VirtualISO) Read(buf []byte) (int, error) {
 	if viso.isClosed {
 		return 0, fs.ErrClosed
 	}
 
-	offset := sizeBytes(off)
+	offset := sizeBytes(viso.offset)
 	remain := sizeBytes(len(buf))
-	read := int64(0)
+	read := 0
 
 	// at EOF
 	if offset >= viso.totalSize || remain == 0 {
@@ -663,7 +650,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 		written := copy(buf, viso.fsBuf[offset:end])
 		buf = buf[written:]
 		remain -= sizeBytes(written)
-		read += int64(written)
+		read += written
 		offset += sizeBytes(written)
 	}
 
@@ -706,7 +693,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 
 				buf = buf[n:]
 				remain -= sizeBytes(n)
-				read += int64(n)
+				read += n
 				offset += sizeBytes(n)
 			}
 
@@ -722,7 +709,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 				}
 				buf = buf[toWrite:]
 				remain -= toWrite
-				read += int64(toWrite)
+				read += int(toWrite)
 				offset += toWrite
 			}
 		}
@@ -740,7 +727,7 @@ func (viso *VirtualISO) read(buf []byte, off int64) (int64, error) {
 		}
 
 		offset += remain
-		read += int64(remain)
+		read += int(remain)
 		remain = 0
 	}
 

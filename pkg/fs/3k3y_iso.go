@@ -66,16 +66,6 @@ func (iso *ISO3k3y) Read(b []byte) (int, error) {
 	return read, nil
 }
 
-func (iso *ISO3k3y) ReadAt(b []byte, off int64) (int, error) {
-	read, err := iso.privateFile.ReadAt(b, off)
-	if err != nil || read == 0 {
-		return read, err
-	}
-
-	iso.clear3k3yData(sizeBytes(off), b[:read])
-	return read, nil
-}
-
 func (*ISO3k3y) clear3k3yData(start sizeBytes, data []byte) {
 	end := start + sizeBytes(len(data))
 	if start >= _3k3yMaskedDataEnd || end < _3k3yMaskedDataBegin {
@@ -99,7 +89,7 @@ func (iso *ISO3k3y) Seek(offset int64, whence int) (int64, error) {
 
 // Test3k3yImage performs checks if it is 3k3y image and returns ErrNot3k3y if not.
 // If key is not empty then image is encrypted.
-func Test3k3yImage(f handler.File) ([]byte, error) {
+func Test3k3yImage(f io.ReaderAt) ([]byte, error) {
 	var data [_3k3yMaskedDataSize]byte
 
 	_, err := f.ReadAt(data[:], int64(_3k3yMaskedDataBegin))

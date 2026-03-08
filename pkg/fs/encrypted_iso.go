@@ -61,7 +61,6 @@ type EncryptedISO struct {
 	clearRegions      bool
 	regionsHeaderSize sizeBytes
 	encryptedRegions  []region
-	cip               cipher.Block // to use in ReadAt
 	cbcDec            cbcMode
 	iv                []byte
 	offset            sizeBytes // to track where we are now without calling Seek
@@ -156,18 +155,7 @@ func (e *EncryptedISO) Read(b []byte) (int, error) {
 
 	e.offset += sizeBytes(read)
 	e.clearRegionsData(readStart, b[:read])
-	e.decryptData(readStart, b[:read], false)
-	return read, nil
-}
-
-func (e *EncryptedISO) ReadAt(b []byte, off int64) (int, error) {
-	read, err := e.privateFile.ReadAt(b, off)
-	if err != nil || read == 0 {
-		return read, err
-	}
-
-	e.clearRegionsData(sizeBytes(off), b[:read])
-	e.decryptData(sizeBytes(off), b[:read], true)
+	e.decryptData(readStart, b[:read])
 	return read, nil
 }
 
@@ -191,7 +179,7 @@ func (e *EncryptedISO) clearRegionsData(start sizeBytes, data []byte) {
 	}
 }
 
-func (e *EncryptedISO) decryptData(start sizeBytes, data []byte, cloneCBC bool) {
+func (e *EncryptedISO) decryptData(start sizeBytes, data []byte) {
 	end := start + sizeBytes(len(data))
 	for _, region := range e.encryptedRegions {
 		if region.end <= start.sectors() || region.start > end.sectors() { // not covered
@@ -202,23 +190,15 @@ func (e *EncryptedISO) decryptData(start sizeBytes, data []byte, cloneCBC bool) 
 		endSector := min(region.end, end.sectors())
 		for i := startSector; i < endSector; i++ {
 			encryptedSpan := data[i.bytes()-start : i.next().bytes()-start]
-			e.setIVForSector(i, cloneCBC).CryptBlocks(encryptedSpan, encryptedSpan)
+			e.setIVForSector(i).CryptBlocks(encryptedSpan, encryptedSpan)
 		}
 	}
 }
 
-func (e *EncryptedISO) setIVForSector(sector sizeSectors, clone bool) cipher.BlockMode {
-	if !clone { // called from Read, may reuse state
-		binary.BigEndian.PutUint32(e.iv[len(e.iv)-4:], uint32(sector))
-		e.cbcDec.SetIV(e.iv)
-		return e.cbcDec
-	}
-
-	// called from ReadAt, by convention it may be called from multiple goroutines, so we can't reuse state
-	// probably should be optimized, but it's not used now
-	var iv [encryptionKeySize]byte
-	binary.BigEndian.PutUint32(iv[len(iv)-4:], uint32(sector))
-	return cipher.NewCBCDecrypter(e.cip, iv[:])
+func (e *EncryptedISO) setIVForSector(sector sizeSectors) cipher.BlockMode {
+	binary.BigEndian.PutUint32(e.iv[len(e.iv)-4:], uint32(sector))
+	e.cbcDec.SetIV(e.iv)
+	return e.cbcDec
 }
 
 // tryGetRedumpKey attempts to find encryption key for .iso image.

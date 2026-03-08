@@ -434,7 +434,7 @@ func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 	return size, nil
 }
 
-func determineSectorSize(f io.ReaderAt) (int, error) {
+func determineSectorSize(f io.ReadSeeker) (sectorSize int, err error) {
 	// sorted
 	sectorSizes := [...]int{2048, 2328, 2336, 2340, 2352, 2368, 2448}
 	const (
@@ -443,7 +443,7 @@ func determineSectorSize(f io.ReaderAt) (int, error) {
 		extraBytes        = 2 // between magic1 and magic2
 		systemAreaSectors = 16
 	)
-	// We can detect sector size for 1 read(at) system call
+	// We can detect sector size for 1 read system call
 	// to do this we read amount of data that equals to difference between maximum and minimum sector size
 	// plus length of magic1 and magic2 plus two bytes between them.
 	// After successful reading we just try to locate magic1 or magic2 by offsets determined by
@@ -451,12 +451,8 @@ func determineSectorSize(f io.ReaderAt) (int, error) {
 	minMaxDifference := sectorSizes[len(sectorSizes)-1] - sectorSizes[0]
 	buf := make([]byte, minMaxDifference+len(magic1)+extraBytes+len(magic2))
 
-	n, err := f.ReadAt(buf, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]))
-	if err != nil {
-		return -1, fmt.Errorf("read failed: %w", err)
-	}
-	if n != len(buf) {
-		return -1, fmt.Errorf("read failed: expected %d bytes, got %d", len(buf), n)
+	if err := fillBuffer(f, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]), buf); err != nil {
+		return -1, err
 	}
 
 	for _, sectorSize := range sectorSizes {
@@ -473,4 +469,36 @@ func determineSectorSize(f io.ReaderAt) (int, error) {
 
 	// for everything except psx images we will be here
 	return -1, nil
+}
+
+func fillBuffer(f io.ReadSeeker, pos int64, buf []byte) (err error) {
+	if rdAt, ok := f.(io.ReaderAt); ok {
+		_, err := rdAt.ReadAt(buf, pos)
+		if err != nil {
+			return fmt.Errorf("read at failed: %w", err)
+		}
+	}
+
+	currOffset, err := f.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return fmt.Errorf("get current position failed: %w", err)
+	}
+	defer func() {
+		_, restoreErr := f.Seek(currOffset, io.SeekStart)
+		if restoreErr != nil {
+			err = errors.Join(err, fmt.Errorf("restore position failed: %w", err))
+		}
+	}()
+
+	_, err = f.Seek(pos, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("seek to first data sector: %w", err)
+	}
+
+	_, err = io.ReadFull(f, buf)
+	if err != nil {
+		return fmt.Errorf("read failed: %w", err)
+	}
+
+	return nil
 }
