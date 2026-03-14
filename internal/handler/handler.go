@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/xakep666/ps3netsrv-go/internal/copier"
+	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
@@ -24,7 +24,7 @@ type Context = server.Context[State]
 type Handler struct {
 	Fs FS
 
-	Copier     *copier.Copier
+	Copier     *ioutil.Copier
 	AllowWrite bool
 }
 
@@ -451,7 +451,7 @@ func determineSectorSize(f io.ReadSeeker) (sectorSize int, err error) {
 	minMaxDifference := sectorSizes[len(sectorSizes)-1] - sectorSizes[0]
 	buf := make([]byte, minMaxDifference+len(magic1)+extraBytes+len(magic2))
 
-	if err := fillBuffer(f, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]), buf); err != nil {
+	if err := ioutil.FillBuffer(f, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]), buf); err != nil {
 		return -1, err
 	}
 
@@ -469,36 +469,4 @@ func determineSectorSize(f io.ReadSeeker) (sectorSize int, err error) {
 
 	// for everything except psx images we will be here
 	return -1, nil
-}
-
-func fillBuffer(f io.ReadSeeker, pos int64, buf []byte) (err error) {
-	if rdAt, ok := f.(io.ReaderAt); ok {
-		_, err := rdAt.ReadAt(buf, pos)
-		if err != nil {
-			return fmt.Errorf("read at failed: %w", err)
-		}
-	}
-
-	currOffset, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return fmt.Errorf("get current position failed: %w", err)
-	}
-	defer func() {
-		_, restoreErr := f.Seek(currOffset, io.SeekStart)
-		if restoreErr != nil {
-			err = errors.Join(err, fmt.Errorf("restore position failed: %w", err))
-		}
-	}()
-
-	_, err = f.Seek(pos, io.SeekStart)
-	if err != nil {
-		return fmt.Errorf("seek to first data sector: %w", err)
-	}
-
-	_, err = io.ReadFull(f, buf)
-	if err != nil {
-		return fmt.Errorf("read failed: %w", err)
-	}
-
-	return nil
 }

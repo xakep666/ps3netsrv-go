@@ -1,4 +1,4 @@
-package fs
+package viso
 
 import (
 	"crypto/rand"
@@ -13,19 +13,21 @@ import (
 	"time"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
+	"github.com/xakep666/ps3netsrv-go/internal/iso9660"
+	pkgfs "github.com/xakep666/ps3netsrv-go/pkg/fs"
 )
 
 const (
 	ps3ModeVolumeName = "PS3VOLUME"
 	consoleID         = "PlayStation3"
 
-	multiExtentPartSize    sizeBytes   = 0xFFFFF800
-	maxPartSize            sizeBytes   = 0xFFFFFFFF
-	basePadSectors         sizeSectors = 0x20
-	volumeDescriptorsCount sizeSectors = 3
+	multiExtentPartSize    iso9660.SizeBytes   = 0xFFFFF800
+	maxPartSize            iso9660.SizeBytes   = 0xFFFFFFFF
+	basePadSectors         iso9660.SizeSectors = 0x20
+	volumeDescriptorsCount iso9660.SizeSectors = 3
 
-	dotEntryIdentifier    = stringD1(byte(0))
-	dotDotEntryIdentifier = stringD1(byte(1))
+	dotEntryIdentifier    = iso9660.StringD1(byte(0))
+	dotDotEntryIdentifier = iso9660.StringD1(byte(1))
 )
 
 // ErrNotDirectory occurs when root path for VirtualISO is not a directory
@@ -56,32 +58,32 @@ var paramSFOPath = filepath.Join("PS3_GAME", "PARAM.SFO")
 // In ps3 game mode we have to parse PARAM.SFO and get TITLE_ID to create sector 1 and
 // write full volume size to sector 0.
 type VirtualISO struct {
-	fs        handler.FS
+	fs        pkgfs.SystemRoot
 	root      string
 	ps3Mode   bool
 	createdAt time.Time
 
-	rootDir           dirItemList // must be alphabetically sort by path
-	filesSizeSectors  sizeSectors // sum of file sizes in sectors
-	pathTable         pathTable   // used in network ps3 mode, testing isn't easy because most desktop OSes ignore it
+	rootDir           dirItemList         // must be alphabetically sort by path
+	filesSizeSectors  iso9660.SizeSectors // sum of file sizes in sectors
+	pathTable         pathTable           // used in network ps3 mode, testing isn't easy because most desktop OSes ignore it
 	pathTableJoliet   pathTable
-	volumeDescriptors [volumeDescriptorsCount]volumeDescriptor
-	volumeSizeSectors sizeSectors
+	volumeDescriptors [volumeDescriptorsCount]iso9660.VolumeDescriptor
+	volumeSizeSectors iso9660.SizeSectors
 
 	isClosed     bool
-	totalSize    sizeBytes // whole disc size (with files)
-	padAreaStart sizeBytes
-	padAreaSize  sizeBytes
-	fsBuf        iso9660encoder // binary-encoded filesystem structures
-	files        filesList      // ordered by location list of files to read from fs
-	offset       sizeBytes      // used during Read and Seek
+	totalSize    iso9660.SizeBytes // whole disc size (with files)
+	padAreaStart iso9660.SizeBytes
+	padAreaSize  iso9660.SizeBytes
+	fsBuf        iso9660.Encoder   // binary-encoded filesystem structures
+	files        filesList         // ordered by location list of files to read from fs
+	offset       iso9660.SizeBytes // used during Read and Seek
 
 	readDirRoot handler.File // used for ReadDir implementation
 }
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
 // Root path must be without ..'s.
-func NewVirtualISO(fsys handler.FS, root string, ps3Mode bool) (*VirtualISO, error) {
+func NewVirtualISO(fsys pkgfs.SystemRoot, root string, ps3Mode bool) (*VirtualISO, error) {
 	rootStat, err := fsys.Stat(root)
 	if err != nil {
 		return nil, fmt.Errorf("stat failed: %w", err)
@@ -182,13 +184,13 @@ func (viso *VirtualISO) buildFSStructures(volumeName string) error {
 		return fmt.Errorf("failed to make joliet path table: %w", err)
 	}
 
-	isoLBA := systemAreaSize.sectors() +
+	isoLBA := iso9660.SystemAreaSize.Sectors() +
 		volumeDescriptorsCount + // volume descriptors are 1 per sector
 		1 + // empty sector after descriptors
-		viso.pathTable.size().sectors()*2 + // little-endian + big-endian table
-		viso.pathTableJoliet.size().sectors()*2
-	jolietLBA := isoLBA + viso.rootDir.size(false).sectors()
-	filesLBA := jolietLBA + viso.rootDir.size(true).sectors()
+		viso.pathTable.size().Sectors()*2 + // little-endian + big-endian table
+		viso.pathTableJoliet.size().Sectors()*2
+	jolietLBA := isoLBA + viso.rootDir.size(false).Sectors()
+	filesLBA := jolietLBA + viso.rootDir.size(true).Sectors()
 
 	viso.calculateSizes(filesLBA)
 
@@ -253,13 +255,13 @@ func (viso *VirtualISO) scanDirectory() error {
 			fi := directoryFile{
 				path:    fullPath,
 				name:    itemStat.Name(),
-				size:    sizeBytes(itemStat.Size()),
+				size:    iso9660.SizeBytes(itemStat.Size()),
 				rLBA:    viso.filesSizeSectors,
 				modTime: itemStat.ModTime(),
 			}
 
 			dirItem.files = append(dirItem.files, fi)
-			viso.filesSizeSectors += fi.size.sectors()
+			viso.filesSizeSectors += fi.size.Sectors()
 		}
 
 		viso.rootDir = append(viso.rootDir, dirItem)
@@ -279,20 +281,20 @@ func (viso *VirtualISO) scanDirectory() error {
 }
 
 func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
-	var totalSizeBytes sizeBytes
+	var totalSizeBytes iso9660.SizeBytes
 
 	// '.' entry
-	dotEntry := directoryEntry{
-		FileFlags:            dirFlagDir,
-		ExtentLocation:       viso.rootDir.size(joliet).sectors(),
-		RecordingDateTime:    recordingTimestamp(item.modTime),
+	dotEntry := iso9660.DirectoryEntry{
+		FileFlags:            iso9660.DirFlagDir,
+		ExtentLocation:       viso.rootDir.size(joliet).Sectors(),
+		RecordingDateTime:    iso9660.RecordingTimestamp(item.modTime),
 		VolumeSequenceNumber: 1,
 		Identifier:           dotEntryIdentifier,
 	}
 
 	// '..' entry
-	dotDotEntry := directoryEntry{
-		FileFlags:            dirFlagDir,
+	dotDotEntry := iso9660.DirectoryEntry{
+		FileFlags:            iso9660.DirFlagDir,
 		VolumeSequenceNumber: 1,
 		Identifier:           dotDotEntryIdentifier,
 	}
@@ -300,7 +302,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 	parent := viso.rootDir.parent(*item)
 	if parent != nil {
 		// link parent directory
-		dotDotEntry.RecordingDateTime = recordingTimestamp(parent.modTime)
+		dotDotEntry.RecordingDateTime = iso9660.RecordingTimestamp(parent.modTime)
 		dotDotEntry.ExtentLocation = parent.dirEntry[0].ExtentLocation
 		if joliet {
 			dotDotEntry.ExtentLocation = parent.dirEntryJoliet[0].ExtentLocation
@@ -315,7 +317,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 		item.dirEntry = append(item.dirEntry, dotEntry, dotDotEntry)
 	}
 
-	totalSizeBytes += dotEntry.size() + dotDotEntry.size()
+	totalSizeBytes += dotEntry.Size() + dotDotEntry.Size()
 
 	// file entries
 	for _, fileItem := range item.files {
@@ -331,9 +333,9 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 		}
 
 		for i := range parts {
-			entry := directoryEntry{
+			entry := iso9660.DirectoryEntry{
 				Identifier:           makeIdentifier(fileItem.name, joliet),
-				RecordingDateTime:    recordingTimestamp(fileItem.modTime),
+				RecordingDateTime:    iso9660.RecordingTimestamp(fileItem.modTime),
 				VolumeSequenceNumber: 1,
 				ExtentLocation:       lba,
 			}
@@ -342,11 +344,11 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			case parts == 1:
 				entry.ExtentLength = fileItem.size
 			case i == parts-1:
-				entry.ExtentLength = fileItem.size - sizeBytes(i)*multiExtentPartSize
+				entry.ExtentLength = fileItem.size - iso9660.SizeBytes(i)*multiExtentPartSize
 			default:
 				entry.ExtentLength = multiExtentPartSize
-				entry.FileFlags = dirFlagMultiExtent
-				lba += multiExtentPartSize.sectors()
+				entry.FileFlags = iso9660.DirFlagMultiExtent
+				lba += multiExtentPartSize.Sectors()
 			}
 
 			if joliet {
@@ -355,7 +357,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 				item.dirEntry = append(item.dirEntry, entry)
 			}
 
-			totalSizeBytes += entry.size()
+			totalSizeBytes += entry.Size()
 		}
 	}
 
@@ -369,10 +371,10 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			continue
 		}
 
-		entry := directoryEntry{
-			FileFlags:            dirFlagDir,
+		entry := iso9660.DirectoryEntry{
+			FileFlags:            iso9660.DirFlagDir,
 			VolumeSequenceNumber: 1,
-			RecordingDateTime:    recordingTimestamp(dirItem.modTime),
+			RecordingDateTime:    iso9660.RecordingTimestamp(dirItem.modTime),
 			Identifier:           makeIdentifier(dirItem.name, joliet),
 		}
 
@@ -382,11 +384,11 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			item.dirEntry = append(item.dirEntry, entry)
 		}
 
-		totalSizeBytes += entry.size()
+		totalSizeBytes += entry.Size()
 	}
 
 	// total size must be integer number of sectors so ceil it if needed
-	totalSizeBytes = totalSizeBytes.sectors().bytes()
+	totalSizeBytes = totalSizeBytes.Sectors().Bytes()
 
 	// set correct size to first entry
 	if joliet {
@@ -424,8 +426,8 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 func (viso *VirtualISO) makePathTable(joliet bool) (pathTable, error) {
 	var ret pathTable
 
-	for i := 0; i < len(viso.rootDir) && i < pathTableItemsLimit; i++ {
-		pathTableEntry := pathTableEntry{
+	for i := 0; i < len(viso.rootDir) && i < iso9660.PathTableItemsLimit; i++ {
+		pathTableEntry := iso9660.PathTableEntry{
 			DirIdentifier: makeIdentifier(viso.rootDir[i].name, joliet),
 		}
 
@@ -452,7 +454,7 @@ func (viso *VirtualISO) makePathTable(joliet bool) (pathTable, error) {
 	return ret, nil
 }
 
-func (viso *VirtualISO) calculateSizes(filesLBA sizeSectors) {
+func (viso *VirtualISO) calculateSizes(filesLBA iso9660.SizeSectors) {
 	// in sectors
 	volumeSize := filesLBA + viso.filesSizeSectors
 	padSectors := basePadSectors
@@ -466,91 +468,91 @@ func (viso *VirtualISO) calculateSizes(filesLBA sizeSectors) {
 	viso.volumeSizeSectors = volumeSizeWithPad
 
 	// in bytes
-	viso.totalSize = volumeSizeWithPad.bytes()
-	viso.padAreaStart = volumeSize.bytes()
-	viso.padAreaSize = padSectors.bytes()
+	viso.totalSize = volumeSizeWithPad.Bytes()
+	viso.padAreaStart = volumeSize.Bytes()
+	viso.padAreaSize = padSectors.Bytes()
 }
 
 func (viso *VirtualISO) makeVolumeDescriptors(volumeName string) {
-	descriptorsLBA := systemAreaSize.sectors()
+	descriptorsLBA := iso9660.SystemAreaSize.Sectors()
 	pathTableLLBA := descriptorsLBA + volumeDescriptorsCount + 1                       // little-endian iso path table
-	pathTableMLBA := pathTableLLBA + viso.pathTable.size().sectors()                   // big-endian iso path table
-	pathTableJolietLLBA := pathTableMLBA + viso.pathTable.size().sectors()             // little-endian joliet path table
-	pathTableJolietMLBA := pathTableJolietLLBA + viso.pathTableJoliet.size().sectors() // big-endian joliet path table
+	pathTableMLBA := pathTableLLBA + viso.pathTable.size().Sectors()                   // big-endian iso path table
+	pathTableJolietLLBA := pathTableMLBA + viso.pathTable.size().Sectors()             // little-endian joliet path table
+	pathTableJolietMLBA := pathTableJolietLLBA + viso.pathTableJoliet.size().Sectors() // big-endian joliet path table
 
 	now := time.Now()
 
-	pvd := volumeDescriptor{
-		Header: volumeDescriptorHeader{
-			Type:       volumeTypePrimary,
-			Identifier: standardIdentifierBytes,
+	pvd := iso9660.VolumeDescriptor{
+		Header: iso9660.VolumeDescriptorHeader{
+			Type:       iso9660.VolumeTypePrimary,
+			Identifier: iso9660.StandardIdentifierBytes,
 			Version:    1,
 		},
-		Primary: &primaryVolumeDescriptorBody{
-			SystemIdentifier:              mangleStrA(runtime.GOOS, false),
-			VolumeIdentifier:              mangleStrD(volumeName, false),
+		Primary: &iso9660.PrimaryVolumeDescriptorBody{
+			SystemIdentifier:              iso9660.MangleStringA(runtime.GOOS, false),
+			VolumeIdentifier:              iso9660.MangleStringD(volumeName, false),
 			VolumeSpaceSize:               viso.volumeSizeSectors,
 			VolumeSetSize:                 1,
 			VolumeSequenceNumber:          1,
-			LogicalBlockSize:              sectorSize,
+			LogicalBlockSize:              iso9660.SectorSize,
 			PathTableSize:                 viso.pathTable.size(),
 			TypeLPathTableLoc:             pathTableLLBA,
 			TypeMPathTableLoc:             pathTableMLBA,
 			ApplicationIdentifier:         "ps3netsrv",
-			VolumeSetIdentifier:           mangleStrD(volumeName, false),
-			VolumeCreationDateAndTime:     volumeDescriptorTimestampFromTime(now),
-			VolumeModificationDateAndTime: volumeDescriptorTimestampFromTime(now),
+			VolumeSetIdentifier:           iso9660.MangleStringD(volumeName, false),
+			VolumeCreationDateAndTime:     iso9660.VolumeDescriptorTimestampFromTime(now),
+			VolumeModificationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
 			FileStructureVersion:          1,
 			RootDirectoryEntry:            &viso.rootDir[0].dirEntry[0],
 		},
 	}
 
-	pvdJoliet := volumeDescriptor{
-		Header: volumeDescriptorHeader{
-			Type:       volumeTypeSupplementary,
-			Identifier: standardIdentifierBytes,
+	pvdJoliet := iso9660.VolumeDescriptor{
+		Header: iso9660.VolumeDescriptorHeader{
+			Type:       iso9660.VolumeTypeSupplementary,
+			Identifier: iso9660.StandardIdentifierBytes,
 			Version:    1,
 		},
-		Primary: &primaryVolumeDescriptorBody{
-			SystemIdentifier:              mangleStrA(runtime.GOOS, true),
-			VolumeIdentifier:              mangleStrD(volumeName, true),
+		Primary: &iso9660.PrimaryVolumeDescriptorBody{
+			SystemIdentifier:              iso9660.MangleStringA(runtime.GOOS, true),
+			VolumeIdentifier:              iso9660.MangleStringD(volumeName, true),
 			VolumeSpaceSize:               viso.volumeSizeSectors,
 			EscapeSequences:               "%/@",
 			VolumeSetSize:                 1,
 			VolumeSequenceNumber:          1,
-			LogicalBlockSize:              sectorSize,
+			LogicalBlockSize:              iso9660.SectorSize,
 			PathTableSize:                 viso.pathTableJoliet.size(),
 			TypeLPathTableLoc:             pathTableJolietLLBA,
 			TypeMPathTableLoc:             pathTableJolietMLBA,
 			ApplicationIdentifier:         "ps3netsrv",
-			VolumeSetIdentifier:           mangleStrD(volumeName, true),
-			VolumeCreationDateAndTime:     volumeDescriptorTimestampFromTime(now),
-			VolumeModificationDateAndTime: volumeDescriptorTimestampFromTime(now),
+			VolumeSetIdentifier:           iso9660.MangleStringD(volumeName, true),
+			VolumeCreationDateAndTime:     iso9660.VolumeDescriptorTimestampFromTime(now),
+			VolumeModificationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
 			FileStructureVersion:          1,
 			RootDirectoryEntry:            &viso.rootDir[0].dirEntryJoliet[0],
 		},
 	}
 
-	terminator := volumeDescriptor{
-		Header: volumeDescriptorHeader{
-			Type:       volumeTypeTerminator,
-			Identifier: standardIdentifierBytes,
+	terminator := iso9660.VolumeDescriptor{
+		Header: iso9660.VolumeDescriptorHeader{
+			Type:       iso9660.VolumeTypeTerminator,
+			Identifier: iso9660.StandardIdentifierBytes,
 		},
 	}
 
-	viso.volumeDescriptors = [volumeDescriptorsCount]volumeDescriptor{pvd, pvdJoliet, terminator}
+	viso.volumeDescriptors = [volumeDescriptorsCount]iso9660.VolumeDescriptor{pvd, pvdJoliet, terminator}
 }
 
 func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 	// ps3-game specific sectors
-	emptySectorsNeeded := systemAreaSize.sectors()
+	emptySectorsNeeded := iso9660.SystemAreaSize.Sectors()
 	if viso.ps3Mode {
 		emptySectorsNeeded -= 2
 
-		viso.fsBuf.appendEncodable(discRangesSector{{
+		viso.fsBuf.AppendEncodable(discRangesSector{{
 			StartSector: 0,
 			EndSector:   viso.volumeSizeSectors - 1,
-		}}, sectorSize)
+		}}, iso9660.SectorSize)
 
 		infoSector := discInfoSector{
 			ConsoleID: consoleID,
@@ -567,77 +569,82 @@ func (viso *VirtualISO) writeFSStructures(gameCode string) error {
 			return fmt.Errorf("failed to generate hash in info sector: %w", err)
 		}
 
-		viso.fsBuf.appendEncodable(&infoSector, sectorSize)
+		viso.fsBuf.AppendEncodable(&infoSector, iso9660.SectorSize)
 	}
 
 	// empty sectors
-	viso.fsBuf.appendZeroSectors(emptySectorsNeeded)
+	viso.fsBuf.AppendZeroSectors(emptySectorsNeeded)
 
 	// volume descriptors
 	for _, vd := range viso.volumeDescriptors {
-		viso.fsBuf.appendEncodable(vd, sectorSize)
+		viso.fsBuf.AppendEncodable(vd, iso9660.SectorSize)
 	}
 
 	// empty sector
-	viso.fsBuf.appendZeroSectors(1)
+	viso.fsBuf.AppendZeroSectors(1)
 
 	// pathTableL
 	for _, e := range viso.pathTable {
-		e.encodeOrdered(&viso.fsBuf, binary.LittleEndian)
+		e.EncodeOrdered(&viso.fsBuf, binary.LittleEndian)
 	}
 
-	viso.fsBuf.padLastSector()
+	viso.fsBuf.PadLastSector()
 
 	// pathTableM
 	for _, e := range viso.pathTable {
-		e.encodeOrdered(&viso.fsBuf, binary.BigEndian)
+		e.EncodeOrdered(&viso.fsBuf, binary.BigEndian)
 	}
 
-	viso.fsBuf.padLastSector()
+	viso.fsBuf.PadLastSector()
 
 	// pathTableJolietL
 	for _, e := range viso.pathTableJoliet {
-		e.encodeOrdered(&viso.fsBuf, binary.LittleEndian)
+		e.EncodeOrdered(&viso.fsBuf, binary.LittleEndian)
 	}
 
-	viso.fsBuf.padLastSector()
+	viso.fsBuf.PadLastSector()
 
 	// pathTableJolietM
 	for _, e := range viso.pathTableJoliet {
-		e.encodeOrdered(&viso.fsBuf, binary.BigEndian)
+		e.EncodeOrdered(&viso.fsBuf, binary.BigEndian)
 	}
 
-	viso.fsBuf.padLastSector()
+	viso.fsBuf.PadLastSector()
 
 	// iso directories
 	for _, item := range viso.rootDir {
 		for _, dirEntry := range item.dirEntry {
-			dirEntry.encode(&viso.fsBuf)
+			dirEntry.Encode(&viso.fsBuf)
 		}
 
-		viso.fsBuf.padLastSector()
+		viso.fsBuf.PadLastSector()
 	}
 
 	// joliet directories
 	for _, item := range viso.rootDir {
 		for _, dirEntry := range item.dirEntryJoliet {
-			dirEntry.encode(&viso.fsBuf)
+			dirEntry.Encode(&viso.fsBuf)
 		}
 
-		viso.fsBuf.padLastSector()
+		viso.fsBuf.PadLastSector()
 	}
 
 	return nil
 }
 
-func (viso *VirtualISO) Read(buf []byte) (int, error) {
+func (viso *VirtualISO) Read(buf []byte) (read int, err error) {
 	if viso.isClosed {
 		return 0, fs.ErrClosed
 	}
 
-	offset := sizeBytes(viso.offset)
-	remain := sizeBytes(len(buf))
-	read := 0
+	offset := iso9660.SizeBytes(viso.offset)
+	remain := iso9660.SizeBytes(len(buf))
+
+	defer func() {
+		if err == nil && read > 0 {
+			viso.offset += iso9660.SizeBytes(read)
+		}
+	}()
 
 	// at EOF
 	if offset >= viso.totalSize || remain == 0 {
@@ -645,13 +652,13 @@ func (viso *VirtualISO) Read(buf []byte) (int, error) {
 	}
 
 	// direct read from buffer
-	if offset < viso.fsBuf.size() {
-		end := min(offset+remain, viso.fsBuf.size())
+	if offset < viso.fsBuf.Size() {
+		end := min(offset+remain, viso.fsBuf.Size())
 		written := copy(buf, viso.fsBuf[offset:end])
 		buf = buf[written:]
-		remain -= sizeBytes(written)
+		remain -= iso9660.SizeBytes(written)
 		read += written
-		offset += sizeBytes(written)
+		offset += iso9660.SizeBytes(written)
 	}
 
 	if offset >= viso.totalSize || remain == 0 {
@@ -661,14 +668,14 @@ func (viso *VirtualISO) Read(buf []byte) (int, error) {
 	// read files
 	if offset < viso.padAreaStart {
 		for fileItem := range viso.files.filesToRead(remain, offset) {
-			if offset < fileItem.rLBA.bytes() {
+			if offset < fileItem.rLBA.Bytes() {
 				return read, fmt.Errorf("file %s location (%d) greater than offset (%d)",
-					fileItem.path, fileItem.rLBA.bytes(), offset)
+					fileItem.path, fileItem.rLBA.Bytes(), offset)
 			}
 
-			if offset >= fileItem.rLBA.bytes()+fileItem.size.sectors().bytes() {
+			if offset >= fileItem.rLBA.Bytes()+fileItem.size.Sectors().Bytes() {
 				return read, fmt.Errorf("offset (%d) greater than padded file %s location(%d)+size(%d)",
-					offset, fileItem.path, fileItem.rLBA.bytes(), fileItem.size.sectors().bytes())
+					offset, fileItem.path, fileItem.rLBA.Bytes(), fileItem.size.Sectors().Bytes())
 			}
 
 			f, err := fileItem.openOnDemand(viso.fs)
@@ -676,7 +683,7 @@ func (viso *VirtualISO) Read(buf []byte) (int, error) {
 				return read, fmt.Errorf("failed to open %s: %w", fileItem.path, err)
 			}
 
-			fileOffset := offset - fileItem.rLBA.bytes()
+			fileOffset := offset - fileItem.rLBA.Bytes()
 
 			if fileOffset < fileItem.size {
 				_, err = f.Seek(int64(fileOffset), io.SeekStart)
@@ -692,14 +699,14 @@ func (viso *VirtualISO) Read(buf []byte) (int, error) {
 				}
 
 				buf = buf[n:]
-				remain -= sizeBytes(n)
+				remain -= iso9660.SizeBytes(n)
 				read += n
-				offset += sizeBytes(n)
+				offset += iso9660.SizeBytes(n)
 			}
 
 			// fill remaining space with zeroes
-			if fileItem.size%sectorSize > 0 && remain > 0 {
-				toWrite := sectorSize - fileItem.size%sectorSize
+			if fileItem.size%iso9660.SectorSize > 0 && remain > 0 {
+				toWrite := iso9660.SectorSize - fileItem.size%iso9660.SectorSize
 				if remain < toWrite {
 					remain = toWrite
 				}
@@ -749,11 +756,11 @@ func (viso *VirtualISO) Seek(offset int64, whence int) (int64, error) {
 		return 0, syscall.EINVAL
 	}
 
-	if offset < 0 || sizeBytes(offset) > viso.totalSize {
+	if offset < 0 || iso9660.SizeBytes(offset) > viso.totalSize {
 		return 0, syscall.EINVAL
 	}
 
-	viso.offset = sizeBytes(offset)
+	viso.offset = iso9660.SizeBytes(offset)
 	return offset, nil
 }
 

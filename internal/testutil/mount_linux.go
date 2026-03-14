@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"testing"
 
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 )
 
@@ -66,47 +68,39 @@ func nextUnallocatedLoop() (int, error) {
 	return int(index), errnoIsErr(sysErr)
 }
 
-func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
-	tempDir, err := os.MkdirTemp("", "ps3netsrv_iso")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to make temp dir: %w", err)
-	}
+func MountISO(t *testing.T, isoPath string) string {
+	t.Helper()
+
+	tempDir, err := os.MkdirTemp(t.TempDir(), "ps3netsrv_iso")
+	require.NoError(t, err, "failed to make temp dir")
 
 	isoFile, err := os.OpenFile(isoPath, os.O_RDONLY, os.ModePerm)
-	if err != nil {
-		return "", nil, fmt.Errorf("iso open failed: %w", err)
-	}
+	require.NoError(t, err, "failed to open iso")
 
-	defer isoFile.Close()
+	t.Cleanup(func() {
+		t.Helper()
+		require.NoError(t, isoFile.Close())
+	})
 
 	lo, err := nextLoopDevice()
-	if err != nil {
-		return "", nil, err
-	}
+	require.NoError(t, err, "get next loop device")
 
-	if err := loop(lo, isoFile); err != nil {
-		lo.Close()
-		return "", nil, fmt.Errorf("loop failed: %w", err)
-	}
+	t.Cleanup(func() {
+		t.Helper()
+		require.NoError(t, lo.Close())
+	})
 
-	if err := unix.Mount(lo.Name(), tempDir, "iso9660", unix.MS_RDONLY, ""); err != nil {
-		unloop(lo)
-		lo.Close()
-		return "", nil, fmt.Errorf("mount failed: %w", err)
-	}
+	require.NoError(t, loop(lo, isoFile), "loop failed")
+	t.Cleanup(func() {
+		t.Helper()
+		require.NoError(t, unloop(lo))
+	})
 
-	return tempDir, func() error {
-		defer os.Remove(tempDir)
-		defer lo.Close()
+	require.NoError(t, unix.Mount(lo.Name(), tempDir, "iso9660", unix.MS_RDONLY, ""), "mount failed")
+	t.Cleanup(func() {
+		t.Helper()
+		require.NoError(t, unix.Unmount(tempDir, 0))
+	})
 
-		if err := unix.Unmount(targetPath, 0); err != nil {
-			return fmt.Errorf("loop unmount failed: %w", err)
-		}
-
-		if err := unloop(lo); err != nil {
-			return fmt.Errorf("unloop failed: %w", err)
-		}
-
-		return nil
-	}, nil
+	return tempDir
 }

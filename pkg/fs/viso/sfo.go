@@ -1,4 +1,4 @@
-package fs
+package viso
 
 import (
 	"bufio"

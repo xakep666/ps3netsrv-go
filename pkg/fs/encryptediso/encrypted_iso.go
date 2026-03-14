@@ -1,4 +1,4 @@
-package fs
+package encryptediso
 
 import (
 	"crypto/aes"
@@ -7,13 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/fs"
-	"path/filepath"
-	"slices"
-	"strings"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
+	"github.com/xakep666/ps3netsrv-go/internal/iso9660"
 )
+
+type privateFile = handler.File
 
 const (
 	encryptionKeySize = 16
@@ -37,7 +36,7 @@ type cbcMode interface {
 }
 
 type region struct {
-	start, end sizeSectors
+	start, end iso9660.SizeSectors
 }
 
 type unencryptedRegionsHeader struct {
@@ -59,11 +58,11 @@ type EncryptedISO struct {
 	privateFile
 
 	clearRegions      bool
-	regionsHeaderSize sizeBytes
+	regionsHeaderSize iso9660.SizeBytes
 	encryptedRegions  []region
 	cbcDec            cbcMode
 	iv                []byte
-	offset            sizeBytes // to track where we are now without calling Seek
+	offset            iso9660.SizeBytes // to track where we are now without calling Seek
 }
 
 // NewEncryptedISO wraps File to EncryptedISO with provided "data1" key.
@@ -119,8 +118,8 @@ func NewEncryptedISO(f handler.File, data1 []byte, clearRegions bool) (*Encrypte
 
 		// encrypted region placed between previous unencrypted region and current unencrypted region
 		encryptedRegions = append(encryptedRegions, region{
-			start: sizeSectors(unencryptedRegions[i-1].End),
-			end:   sizeSectors(unencryptedRegion.Start),
+			start: iso9660.SizeSectors(unencryptedRegions[i-1].End),
+			end:   iso9660.SizeSectors(unencryptedRegion.Start),
 		})
 	}
 
@@ -137,7 +136,7 @@ func NewEncryptedISO(f handler.File, data1 []byte, clearRegions bool) (*Encrypte
 	var iv [encryptionKeySize]byte
 	return &EncryptedISO{
 		clearRegions:      clearRegions,
-		regionsHeaderSize: sizeBytes(binary.Size(hdr) + binary.Size(unencryptedRegions)),
+		regionsHeaderSize: iso9660.SizeBytes(binary.Size(hdr) + binary.Size(unencryptedRegions)),
 		privateFile:       f,
 		encryptedRegions:  encryptedRegions,
 		cbcDec:            cipher.NewCBCDecrypter(cip, iv[:]).(cbcMode),
@@ -153,7 +152,7 @@ func (e *EncryptedISO) Read(b []byte) (int, error) {
 		return read, err
 	}
 
-	e.offset += sizeBytes(read)
+	e.offset += iso9660.SizeBytes(read)
 	e.clearRegionsData(readStart, b[:read])
 	e.decryptData(readStart, b[:read])
 	return read, nil
@@ -165,75 +164,40 @@ func (e *EncryptedISO) Seek(offset int64, whence int) (int64, error) {
 		return newOffset, err
 	}
 
-	e.offset = sizeBytes(newOffset)
+	e.offset = iso9660.SizeBytes(newOffset)
 	return newOffset, nil
 }
 
-func (e *EncryptedISO) clearRegionsData(start sizeBytes, data []byte) {
+func (e *EncryptedISO) clearRegionsData(start iso9660.SizeBytes, data []byte) {
 	if start >= e.regionsHeaderSize || !e.clearRegions {
 		return
 	}
 
-	for i := sizeBytes(0); i < e.regionsHeaderSize-start && i < sizeBytes(len(data)); i++ {
+	for i := iso9660.SizeBytes(0); i < e.regionsHeaderSize-start && i < iso9660.SizeBytes(len(data)); i++ {
 		data[i] = 0
 	}
 }
 
-func (e *EncryptedISO) decryptData(start sizeBytes, data []byte) {
-	end := start + sizeBytes(len(data))
+func (e *EncryptedISO) decryptData(start iso9660.SizeBytes, data []byte) {
+	end := start + iso9660.SizeBytes(len(data))
 	for _, region := range e.encryptedRegions {
-		if region.end <= start.sectors() || region.start > end.sectors() { // not covered
+		if region.end <= start.Sectors() || region.start > end.Sectors() { // not covered
 			continue
 		}
 
-		startSector := max(region.start, start.floorSectors())
-		endSector := min(region.end, end.sectors())
+		startSector := max(region.start, start.FloorSectors())
+		endSector := min(region.end, end.Sectors())
 		for i := startSector; i < endSector; i++ {
-			encryptedSpan := data[i.bytes()-start : i.next().bytes()-start]
+			encryptedSpan := data[i.Bytes()-start : i.Next().Bytes()-start]
 			e.setIVForSector(i).CryptBlocks(encryptedSpan, encryptedSpan)
 		}
 	}
 }
 
-func (e *EncryptedISO) setIVForSector(sector sizeSectors) cipher.BlockMode {
+func (e *EncryptedISO) setIVForSector(sector iso9660.SizeSectors) cipher.BlockMode {
 	binary.BigEndian.PutUint32(e.iv[len(e.iv)-4:], uint32(sector))
 	e.cbcDec.SetIV(e.iv)
 	return e.cbcDec
-}
-
-// tryGetRedumpKey attempts to find encryption key for .iso image.
-func tryGetRedumpKey(fsys handler.FS, requestedPath string) ([]byte, error) {
-	// encryption makes sense only for .iso or .ISO file inside ps3ISO or PS3ISO directory
-	ext := filepath.Ext(requestedPath)
-	if strings.ToLower(ext) != isoExt {
-		return nil, fs.ErrNotExist
-	}
-
-	pathElems := strings.Split(requestedPath, string(filepath.Separator))
-	ps3IsoIdx := slices.IndexFunc(pathElems, func(s string) bool {
-		return strings.ToLower(s) == ps3isoDir
-	})
-	if ps3IsoIdx < 0 {
-		return nil, fs.ErrNotExist
-	}
-
-	// try .dkey file first
-	keyFile, err := fsys.Open(strings.TrimSuffix(requestedPath, ext) + dkeyExt)
-	if err == nil {
-		defer keyFile.Close()
-		return ReadKeyFile(keyFile)
-	}
-
-	// try .dkey in REDKEY directory (instead of PS3ISO)
-	pathElems[ps3IsoIdx] = redkeyDir
-	pathElems[len(pathElems)-1] = strings.TrimSuffix(pathElems[len(pathElems)-1], ext) + dkeyExt
-	keyFile, err = fsys.Open(filepath.Join(pathElems...))
-	if err == nil {
-		defer keyFile.Close()
-		return ReadKeyFile(keyFile)
-	}
-
-	return nil, err
 }
 
 func deriveISOKey(targetKey, data1Key []byte) error {

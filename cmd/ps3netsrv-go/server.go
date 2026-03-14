@@ -19,11 +19,14 @@ import (
 	"golang.org/x/net/netutil"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/xakep666/ps3netsrv-go/internal/copier"
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
+	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/isroot"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
@@ -119,11 +122,11 @@ func (sapp *serverApp) server() error {
 		"root", sapp.Root,
 	)
 
-	var cop *copier.Copier
+	var cop *ioutil.Copier
 	if sapp.BufferSize > 0 {
-		cop = copier.NewPooledCopier(sapp.BufferSize)
+		cop = ioutil.NewPooledCopier(sapp.BufferSize)
 	} else {
-		cop = copier.NewCopier()
+		cop = ioutil.NewCopier()
 	}
 
 	sysRoot := fs.SystemRoot(fs.NewRelaxedSystemRoot(sapp.Root))
@@ -136,7 +139,14 @@ func (sapp *serverApp) server() error {
 
 	s := server.Server[handler.State]{
 		Handler: &handler.Handler{
-			Fs:         fs.NewFS(sysRoot),
+			Fs: fs.NewFS(sysRoot,
+				[]fs.FileOpener{viso.Opener{}},
+				[]fs.FileWrapper{
+					iso3k3y.KeyExtractionFileWrapper{},
+					encryptediso.FileWrapper{},
+					iso3k3y.FileWrapper{},
+				},
+			),
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
 		},

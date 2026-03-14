@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/xakep666/ps3netsrv-go/internal/testutil"
 )
@@ -18,13 +17,7 @@ func TestMountISO(t *testing.T) {
 	}
 
 	t.Logf("Root permission may be required for mounting")
-	mountPath, cleanup, err := testutil.MountISO(filepath.Join("testdata", "testimg.iso"))
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		t.Helper()
-		require.NoError(t, cleanup())
-	})
+	mountPath := testutil.MountISO(t, filepath.Join("testdata", "testimg.iso"))
 
 	entries, err := os.ReadDir(mountPath)
 	if assert.NoError(t, err) {
