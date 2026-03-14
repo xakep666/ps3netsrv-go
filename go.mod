@@ -1,12 +1,13 @@
 module github.com/xakep666/ps3netsrv-go
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/KimMachineGun/automemlimit v0.7.5
 	github.com/alecthomas/kong v1.14.0
 	github.com/djherbis/times v1.6.0
 	github.com/docker/go-units v0.5.0
+	github.com/ebitengine/purego v0.10.0
 	github.com/lmittmann/tint v1.1.3
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20

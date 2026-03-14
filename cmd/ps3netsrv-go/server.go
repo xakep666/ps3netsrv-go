@@ -24,6 +24,7 @@ import (
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/internal/osutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/chd"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
@@ -142,10 +143,11 @@ func (sapp *serverApp) server() error {
 			Fs: fs.NewFS(sysRoot,
 				[]fs.FileOpener{
 					viso.Opener{},
-					osutil.FileTimesOpener{},
+					chd.NewOpener(slog.Default()),
+					osutil.FileTimesOpener{}, // must be last because always applies
 				},
 				[]fs.FileWrapper{
-					osutil.FileTimesWrapper{},
+					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)
 					iso3k3y.KeyExtractionFileWrapper{},
 					encryptediso.FileWrapper{},
 					iso3k3y.FileWrapper{},
