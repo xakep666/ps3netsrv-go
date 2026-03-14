@@ -96,7 +96,7 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 			continue
 		}
 
-		return wrapFileInfoForExtendedTimes(fileInfo)
+		return fileInfo
 	}
 }
 
@@ -148,7 +148,7 @@ func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	info, err := h.Fs.Stat(filepath.FromSlash(path))
 	switch {
 	case errors.Is(err, nil):
-		return wrapFileInfoForExtendedTimes(info), nil
+		return info, nil
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, err
 	default:

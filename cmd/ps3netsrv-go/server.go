@@ -21,8 +21,8 @@ import (
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
-	"github.com/xakep666/ps3netsrv-go/internal/isroot"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
@@ -140,8 +140,12 @@ func (sapp *serverApp) server() error {
 	s := server.Server[handler.State]{
 		Handler: &handler.Handler{
 			Fs: fs.NewFS(sysRoot,
-				[]fs.FileOpener{viso.Opener{}},
+				[]fs.FileOpener{
+					viso.Opener{},
+					osutil.FileTimesOpener{},
+				},
 				[]fs.FileWrapper{
+					osutil.FileTimesWrapper{},
 					iso3k3y.KeyExtractionFileWrapper{},
 					encryptediso.FileWrapper{},
 					iso3k3y.FileWrapper{},
@@ -165,7 +169,7 @@ func (sapp *serverApp) server() error {
 }
 
 func (sapp *serverApp) warnRoot() {
-	if isroot.IsRoot() {
+	if osutil.IsRoot() {
 		if sapp.AllowWrite {
 			slog.Warn("Running as root/administrator with write access is dangerous! This may damage your data!")
 		} else {

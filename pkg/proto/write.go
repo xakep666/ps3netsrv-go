@@ -12,18 +12,16 @@ type Writer struct {
 	io.Writer
 }
 
-// AccessTimeFileInfo may be implemented by fs.FileInfo to provide access time information
+// AccessTimeFileInfo may be implemented by fs.FileInfo to provide access time information.
 type AccessTimeFileInfo interface {
 	fs.FileInfo
 
 	AccessTime() time.Time
 }
 
-// AccessChangeTimeFileInfo may be implemented by fs.FileInfo to provide access and change time information.
-// This interface hierarchy used because AccessTime supported on more platforms than ChangeTime and all platforms
-// having ChangeTime also have AccessTime.
-type AccessChangeTimeFileInfo interface {
-	AccessTimeFileInfo
+// ChangeTimeFileInfo may be implemented by fs.FileInfo to provide access and change time information.
+type ChangeTimeFileInfo interface {
+	fs.FileInfo
 
 	ChangeTime() time.Time
 }
@@ -311,7 +309,7 @@ func fileInfoTimes(info fs.FileInfo) (mtime, ctime, atime uint64) {
 		atime = uint64(accessTime.AccessTime().UTC().Unix())
 	}
 
-	if changeTime, ok := info.(AccessChangeTimeFileInfo); ok && !changeTime.ChangeTime().IsZero() {
+	if changeTime, ok := info.(ChangeTimeFileInfo); ok && !changeTime.ChangeTime().IsZero() {
 		ctime = uint64(changeTime.ChangeTime().UTC().Unix())
 	}
 

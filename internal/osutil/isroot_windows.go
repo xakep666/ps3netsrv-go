@@ -1,4 +1,4 @@
-package isroot
+package osutil
 
 import (
 	"golang.org/x/sys/windows"
