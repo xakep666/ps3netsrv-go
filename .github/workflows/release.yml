@@ -13,7 +13,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -31,6 +31,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get compiled libchdr
+        uses: actions/download-artifact@v8
+        with:
+          pattern: libchdr-*
+          path: thirdparty/libchdr
+      
+      - name: Extract compiled libchdr
+        run: |
+          find thirdparty/libchdr -type f -name '*.tar' -execdir sh -c 'tar -xf "{}" && rm "{}"' \;
+          ls -R thirdparty/libchdr
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6

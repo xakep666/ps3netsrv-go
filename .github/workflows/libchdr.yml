@@ -1,0 +1,84 @@
+name: Build libchdr
+
+on:
+  workflow_call:
+
+jobs:
+  build-libchdr:
+    strategy:
+      matrix:
+        arch:
+          - name: x86_64
+            goname: amd64
+          - name: aarch64
+            goname: arm64
+        os:
+          - name: linux
+            cmakename: Linux
+            goname: linux
+            libc: gnu
+          - name: windows
+            cmakename: Windows
+            goname: windows
+            libc: gnu
+          - name: macos
+            cmakename: Darwin
+            goname: darwin
+            libc: none
+        include:
+          # arm support only for linux with hard-float support
+          - arch:
+              name: arm
+              goname: arm
+            os:
+              name: linux
+              cmakename: Linux
+              goname: linux
+              libc: gnueabihf
+        exclude:
+          # windows arm64 version can't compile
+          - arch:
+              name: aarch64
+            os:
+              name: windows
+    runs-on: ubuntu-latest
+    env:
+      ZIGCC_FLAGS: '--target=${{ matrix.arch.name }}-${{ matrix.os.name }}-${{ matrix.os.libc }}'
+      ZIGCC_BLACKLIST_FLAGS: '-Wl,-exported_symbol,_chd_*' # fails for macos
+    steps:
+      - name: "Checkout libchdr"
+        uses: actions/checkout@v6
+        with:
+          repository: rtissera/libchdr
+          ref: 7715de186a6798642ac81912b02667087fec2c2b
+      - name: Setup Zig compliler
+        uses: mlugg/setup-zig@v2
+      - name: Install 'zigcc'
+        run: pip install -U zigcc
+      - name: Complile libchdr
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          build-dir: build
+          c-compiler: zigcc
+          options: |
+            CMAKE_ASM_COMPILER='zigcc'
+            CMAKE_SYSTEM_NAME=${{ matrix.os.cmakename }}
+            CMAKE_BUILD_TYPE=Release
+            CMAKE_SYSTEM_PROCESSOR=${{ matrix.arch.name }}
+          build-args: |
+            --target chdr
+      - name: Install complied libs
+        # 'tar' to preserve a symlinks
+        # unpack .a archives for windows (idk why cmake archives dll)
+        run: |
+          export DISTDIR="${{ github.workspace }}/dist"
+          export LIBDIR="$DISTDIR/lib"
+          mkdir -p "$DISTDIR"
+          cmake --install "${{ github.workspace }}/build" --prefix "$DISTDIR" --strip
+          find "$LIBDIR" -type f -name '*.dll.a' -execdir sh -c 'ar x "{}" && rm "{}"' \;
+          (cd "$LIBDIR" && tar -cf "$DISTDIR/libchdr.tar" libchdr.*)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: libchdr-${{ matrix.os.goname }}-${{ matrix.arch.goname }}
+          path: ${{ github.workspace }}/dist/libchdr.tar
