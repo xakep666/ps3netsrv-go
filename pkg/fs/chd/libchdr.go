@@ -162,29 +162,48 @@ func (f *chdFile) Read(b []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	if len(f.currentHunkData) == 0 {
-		f.currentHunkData = make([]byte, f.header.HunkBytes)
-	}
-
 	read := 0
 	newOffset := f.offset
 	// either buffer is filled or filed is ended
 	for len(b) > 0 && newOffset < int64(f.header.LogicalBytes) {
 		// decompress hunk if needed
 		desiredHunkNum := newOffset / int64(f.header.HunkBytes)
+		offsetInHunk := newOffset % int64(f.header.HunkBytes)
+
 		if desiredHunkNum < 0 || desiredHunkNum > int64(f.header.TotalHunks) {
 			break
 		}
+
+		// a small optimization to avoid excessive copying
+		// if request buffer is large enough to fit whole hunk from the beginning
+		// we can just read it directly into a buffer
+		if offsetInHunk == 0 && len(b) >= int(f.header.HunkBytes) {
+			readRes := f.lib.read(f.handle, uint32(desiredHunkNum), unsafe.SliceData(b))
+			if err := f.lib.makeError(readRes); err != nil {
+				return read, fmt.Errorf("chd: direct read hunk %d: %w", desiredHunkNum, err)
+			}
+
+			read += int(f.header.HunkBytes)
+			newOffset += int64(f.header.HunkBytes)
+			b = b[f.header.HunkBytes:]
+			continue
+		}
+
 		if desiredHunkNum != f.currentHunkNum {
+			// allocate on-demand only
+			if len(f.currentHunkData) == 0 {
+				f.currentHunkData = make([]byte, f.header.HunkBytes)
+			}
+
 			readRes := f.lib.read(f.handle, uint32(desiredHunkNum), unsafe.SliceData(f.currentHunkData))
 			if err := f.lib.makeError(readRes); err != nil {
 				return read, fmt.Errorf("chd: read hunk %d: %w", desiredHunkNum, err)
 			}
+
 			f.currentHunkNum = desiredHunkNum
 		}
 
 		// now just copy unpacked data to our target buffer
-		offsetInHunk := newOffset % int64(f.header.HunkBytes)
 		copied := copy(b, f.currentHunkData[offsetInHunk:])
 		read += copied
 		newOffset += int64(copied)
