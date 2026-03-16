@@ -53,8 +53,8 @@ func (c *chdInfoCmd) Run() error {
 		{"Bytes per hunk (uncompressed)", "0x%x", hdr.HunkBytes},
 		{"Uncompressed size", "%s", units.HumanSize(float64(hdr.LogicalBytes))},
 		{"On-disk size", "%s", units.HumanSize(float64(fi.Size()))},
-		{"Sectors count (uncompressed)", "%d", hdr.UnitCount},
-		{"Bytes per sector (uncompressed)", "0x%d", hdr.UnitBytes},
+		{"Units count (uncompressed)", "%d", hdr.UnitCount},
+		{"Bytes per unit (uncompressed)", "0x%d", hdr.UnitBytes},
 	}
 	if hdr.MD5 != ([md5.Size]byte{}) {
 		data = append(data, kv{"MD5", "%s", hex.EncodeToString(hdr.MD5[:])})
@@ -63,33 +63,16 @@ func (c *chdInfoCmd) Run() error {
 		data = append(data, kv{"Parent MD5", "%s", hex.EncodeToString(hdr.ParentMD5[:])})
 	}
 	if hdr.SHA1 != ([sha1.Size]byte{}) {
-		data = append(data, kv{"SHA1 (with metadata)", "%s", hex.EncodeToString(hdr.SHA1[:])})
+		data = append(data, kv{"SHA1", "%s", hex.EncodeToString(hdr.SHA1[:])})
 	}
 	if hdr.RawSHA1 != ([sha1.Size]byte{}) {
-		data = append(data, kv{"Raw SHA1 (without metadata)", "%s", hex.EncodeToString(hdr.RawSHA1[:])})
+		data = append(data, kv{"Data SHA1", "%s", hex.EncodeToString(hdr.RawSHA1[:])})
 	}
 	if hdr.ParentSHA1 != ([sha1.Size]byte{}) {
 		data = append(data, kv{"Parent SHA1", "%s", hex.EncodeToString(hdr.ParentSHA1[:])})
 	}
 	for i, compressor := range hdr.Compression {
-		var compName string
-		switch compressor {
-		case 0:
-			compName = "Unused"
-		case 1:
-			compName = "ZLib"
-		case 2:
-			compName = "ZLib+"
-		case 3:
-			compName = "AV"
-		default:
-			compName = fmt.Sprintf("<unknown:%d>", compressor)
-		}
-		data = append(data, kv{
-			fmt.Sprintf("Custom compressor %d", i),
-			"%s",
-			compName,
-		})
+		data = append(data, kv{fmt.Sprintf("Custom compressor %d", i), "%s", compressor})
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
