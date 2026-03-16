@@ -32,11 +32,10 @@ type LibCHDR struct {
 	log       *slog.Logger
 	callbacks *fileCallbacks
 
-	openFileCallbacks   func(callbacks *fileCallbacks, userdata *osutil.Handle, mode fileMode, parent fileHandle, chdFile *fileHandle) errorCode
-	precache            func(chdFile fileHandle) errorCode
+	openFileCallbacks   func(callbacks *fileCallbacks, userdata osutil.Handle, mode fileMode, parent fileHandle, chdFile *fileHandle) errorCode
 	close               func(chdFile fileHandle)
 	getHeader           func(chdFile fileHandle) *FileHeader
-	readHeaderCallbacks func(callbacks *fileCallbacks, userdata *osutil.Handle, header *FileHeader) errorCode
+	readHeaderCallbacks func(callbacks *fileCallbacks, userdata osutil.Handle, header *FileHeader) errorCode
 	read                func(chdFile fileHandle, hunknum uint32, buffer *byte) errorCode
 	errorString         func(code errorCode) string
 }
@@ -52,7 +51,6 @@ func NewLibCHDR(logger *slog.Logger) (*LibCHDR, error) {
 		callbacks: newFileCallbacks(logger),
 	}
 	purego.RegisterLibFunc(&ret.openFileCallbacks, handle, "chd_open_core_file_callbacks")
-	purego.RegisterLibFunc(&ret.precache, handle, "chd_precache")
 	purego.RegisterLibFunc(&ret.close, handle, "chd_close")
 	purego.RegisterLibFunc(&ret.getHeader, handle, "chd_get_header")
 	purego.RegisterLibFunc(&ret.readHeaderCallbacks, handle, "chd_read_header_core_file_callbacks")
@@ -75,13 +73,9 @@ func (l *LibCHDR) NewFile(f handler.File) (handler.File, error) {
 	}
 
 	var chdFileHandle fileHandle
-	chdErrCode := l.openFileCallbacks(l.callbacks, new(osutil.NewHandle(f)), fileModeRead, 0, &chdFileHandle)
+	chdErrCode := l.openFileCallbacks(l.callbacks, osutil.NewHandle(f), fileModeRead, 0, &chdFileHandle)
 	if err := l.makeError(chdErrCode); err != nil {
 		return nil, fmt.Errorf("chd: open: %w", err)
-	}
-
-	if err := l.makeError(l.precache(chdFileHandle)); err != nil {
-		return nil, fmt.Errorf("chd: precache: %w", err)
 	}
 
 	ret := &chdFile{
@@ -100,14 +94,14 @@ func (l *LibCHDR) ReadHeader(f handler.File) (*FileHeader, error) {
 	defer cgoFileHandle.Delete()
 
 	var header FileHeader
-	if err := l.makeError(l.readHeaderCallbacks(l.callbacks, &cgoFileHandle, &header)); err == nil {
+	if err := l.makeError(l.readHeaderCallbacks(l.callbacks, cgoFileHandle, &header)); err == nil {
 		return &header, nil
 	}
 
 	// workaround until https://github.com/rtissera/libchdr/pull/146 is merged or that issue is fixed somehow
 	var chdFileHandle fileHandle
 	// special wrapper to avoid file closing by libchdr
-	chdErrCode := l.openFileCallbacks(l.callbacks, new(osutil.NewHandle(&nopCloserFile{f})), fileModeRead, 0, &chdFileHandle)
+	chdErrCode := l.openFileCallbacks(l.callbacks, osutil.NewHandle(&nopCloserFile{f}), fileModeRead, 0, &chdFileHandle)
 	if err := l.makeError(chdErrCode); err != nil {
 		return nil, fmt.Errorf("chd: open: %w", err)
 	}
