@@ -78,7 +78,7 @@ func (l *LibCHDR) NewFile(f handler.File) (handler.File, error) {
 		return nil, fmt.Errorf("chd: open: %w", err)
 	}
 
-	ret := &chdFile{
+	ret := &file{
 		lib:              l,
 		handle:           chdFileHandle,
 		originalName:     f.Name(),
@@ -126,7 +126,7 @@ func (l *LibCHDR) makeError(code errorCode) error {
 	return &Error{code: code, message: l.errorString(code)}
 }
 
-type chdFile struct {
+type file struct {
 	lib              *LibCHDR
 	handle           fileHandle
 	originalName     string
@@ -139,7 +139,7 @@ type chdFile struct {
 	currentHunkData []byte
 }
 
-func (f *chdFile) init() error {
+func (f *file) init() error {
 	if f.handle == 0 {
 		return fs.ErrClosed
 	}
@@ -152,7 +152,7 @@ func (f *chdFile) init() error {
 	return nil
 }
 
-func (f *chdFile) Read(b []byte) (int, error) {
+func (f *file) Read(b []byte) (int, error) {
 	if err := f.init(); err != nil {
 		return 0, err
 	}
@@ -214,7 +214,7 @@ func (f *chdFile) Read(b []byte) (int, error) {
 	return read, nil
 }
 
-func (f *chdFile) Seek(offset int64, whence int) (int64, error) {
+func (f *file) Seek(offset int64, whence int) (int64, error) {
 	if err := f.init(); err != nil {
 		return 0, err
 	}
@@ -237,25 +237,25 @@ func (f *chdFile) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
-func (f *chdFile) Stat() (fs.FileInfo, error) {
+func (f *file) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err
 	}
-	return &chdFileStat{
+	return &fileStat{
 		FileInfo: f.originalFileInfo,
 		header:   f.header,
 	}, nil
 }
 
-func (f *chdFile) ReadDir(int) ([]fs.DirEntry, error) {
+func (f *file) ReadDir(int) ([]fs.DirEntry, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (f *chdFile) Name() string {
+func (f *file) Name() string {
 	return f.originalName
 }
 
-func (f *chdFile) Close() error {
+func (f *file) Close() error {
 	if f.handle == 0 {
 		return fs.ErrClosed
 	}

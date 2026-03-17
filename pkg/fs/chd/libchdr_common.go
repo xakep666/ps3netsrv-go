@@ -122,16 +122,16 @@ func (e *Error) Is(other error) bool {
 	return e.code == otherError.code
 }
 
-type chdFileStat struct {
+type fileStat struct {
 	fs.FileInfo
 	header *FileHeader
 }
 
-func (s *chdFileStat) Size() int64 {
+func (s *fileStat) Size() int64 {
 	return int64(s.header.LogicalBytes)
 }
 
-func (s *chdFileStat) Mode() fs.FileMode {
+func (s *fileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
@@ -140,7 +140,7 @@ type StatSysWithHeader struct {
 	Sys    any
 }
 
-func (s *chdFileStat) Sys() any {
+func (s *fileStat) Sys() any {
 	return &StatSysWithHeader{
 		Header: s.header,
 		Sys:    s.FileInfo.Sys(),
