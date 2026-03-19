@@ -18,7 +18,8 @@ const (
 )
 
 type Opener struct {
-	lib *LibCHDR
+	lib    *LibCHDR
+	logger *slog.Logger
 }
 
 func NewOpener(logger *slog.Logger) *Opener {
@@ -31,7 +32,8 @@ func NewOpener(logger *slog.Logger) *Opener {
 	logger.Info("libchdr loaded, enabling chd support")
 
 	return &Opener{
-		lib: lib,
+		lib:    lib,
+		logger: logger,
 	}
 }
 
@@ -41,13 +43,13 @@ func (o *Opener) canProceed(path string) bool {
 	}
 
 	ext1 := filepath.Ext(path)
-	if strings.ToLower(ext1) == chdExt {
+	if strings.EqualFold(ext1, chdExt) {
 		return true
 	}
 
 	ext2 := filepath.Ext(strings.TrimSuffix(path, ext1))
 
-	return strings.ToLower(ext1) == isoExt && strings.ToLower(ext2) == chdExt
+	return strings.EqualFold(ext1, isoExt) && strings.EqualFold(ext2, chdExt)
 }
 
 func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) {
@@ -56,11 +58,11 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 		return nil, fs.ErrNotExist
 	}
 
-	if ext := filepath.Ext(path); strings.ToLower(ext) == isoExt {
+	if ext := filepath.Ext(path); strings.EqualFold(ext, isoExt) {
 		path = strings.TrimSuffix(path, ext)
 	}
 
-	f, err := fsys.Open(strings.TrimSuffix(path, filepath.Ext(path)))
+	f, err := fsys.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +76,14 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 		return nil, fs.ErrNotExist
 	default:
 		return nil, err
+	}
+
+	if cf.Header.IsCDCodesOnly() {
+		cdFile, err := cf.AsCD()
+		if err != nil {
+			return nil, err
+		}
+		return &fileView{cdFile}, nil
 	}
 
 	return &fileView{cf}, nil
@@ -93,49 +103,31 @@ func (c *fileView) Stat() (fs.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &fakeNameFileStat{
-		fileStat: fi.(*fileStat),
-	}, nil
+	return &fakeNameFileStat{fi}, nil
 }
 
 func (o *Opener) Stat(fsys pkgfs.SystemRoot, path string) (fs.FileInfo, error) {
-	if !o.canProceed(path) {
+	cf, err := o.Open(fsys, path)
+	switch {
+	case errors.Is(err, nil):
+		// pass
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, err
+	default:
+		// report as non-existing file if open fails with unhandled error to not block directory listing
+		o.logger.Error("CHD file open for stat failed, report as non-existing", logutil.ErrorAttr(err))
 		return nil, fs.ErrNotExist
 	}
 
-	if ext := filepath.Ext(path); strings.ToLower(ext) == isoExt {
-		path = strings.TrimSuffix(path, ext)
-	}
+	defer cf.Close()
 
-	f, err := fsys.Open(path)
-	if err != nil {
-		return nil, err
-	}
-
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	hdr, err := o.lib.ReadHeader(f)
-	if err != nil {
-		return nil, err
-	}
-
-	return &fakeNameFileStat{
-		&fileStat{
-			FileInfo: fi,
-			header:   hdr,
-		},
-	}, nil
+	return cf.Stat()
 }
 
 type fakeNameFileStat struct {
-	*fileStat
+	fs.FileInfo
 }
 
 func (c *fakeNameFileStat) Name() string {
-	return c.fileStat.FileInfo.Name() + isoExt
+	return c.FileInfo.Name() + isoExt
 }

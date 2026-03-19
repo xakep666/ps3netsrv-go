@@ -37,10 +37,13 @@ func (c *chdInfoCmd) Run() error {
 		return err
 	}
 
-	hdr, err := lib.ReadHeader(c.Image)
+	cf, err := lib.NewFile(c.Image)
 	if err != nil {
 		return err
 	}
+	defer cf.Close()
+
+	hdr := cf.Header
 
 	type kv struct {
 		name      string
@@ -74,6 +77,9 @@ func (c *chdInfoCmd) Run() error {
 	for i, compressor := range hdr.Compression {
 		data = append(data, kv{fmt.Sprintf("Custom compressor %d", i), "%s", compressor})
 	}
+	for i := range cf.CDMetadata {
+		data = append(data, kv{fmt.Sprintf("Metadata %d", i), "%s", &cf.CDMetadata[i]})
+	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
 	for _, d := range data {
@@ -86,8 +92,9 @@ func (c *chdInfoCmd) Run() error {
 }
 
 type chdDecompressCmd struct {
-	Image  *os.File `arg:"" help:"Path to CHD image to decompress."`
-	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
+	Image        *os.File `arg:"" help:"Path to CHD image to decompress."`
+	Output       *os.File `arg:"" help:"Path to output image." type:"outputfile"`
+	RawCdSectors bool     `help:"Write raw sectors data ignoring metadata info if CHD image is CD-codecs encoded."`
 }
 
 func (c *chdDecompressCmd) Run() error {
@@ -108,12 +115,20 @@ func (c *chdDecompressCmd) Run() error {
 		return err
 	}
 
-	_, err = io.Copy(c.Output, f)
-	if err != nil {
-		return nil
+	if !f.Header.IsCDCodesOnly() || c.RawCdSectors {
+		fmt.Printf("Decompressing CHD image %s ...\n", c.Image.Name())
+		_, err = io.Copy(c.Output, f)
+		return err
 	}
 
-	return nil
+	cdFile, err := f.AsCD()
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
+	_, err = io.Copy(c.Output, cdFile)
+	return err
 }
 
 type chdApp struct {
