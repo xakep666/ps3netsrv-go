@@ -258,7 +258,7 @@ type discInfoSector struct {
 }
 
 func (d *discInfoSector) Encode(enc *iso9660.Encoder) {
-	enc.AppendString(d.ConsoleID, 16, ' ')
+	enc.AppendString(d.ConsoleID, 16, 0)
 	enc.AppendString(d.ProductID, 32, ' ')
 	enc.AppendZeroes(16)
 	enc.AppendBytes(d.Info[:])
