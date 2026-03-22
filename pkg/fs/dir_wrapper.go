@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"unsafe"
@@ -22,6 +23,8 @@ func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
 		return items, err
 	}
 
+	log := slog.With(slog.String("request_path", dw.Name()), slog.String("op", "readdir"))
+
 	// to reduce allocations during full path generation
 	sb := append([]byte(dw.File.Name()), filepath.Separator)
 	fileNameStart := len(sb)
@@ -30,9 +33,11 @@ func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
 		for j, opener := range dw.openers {
 			sb = append(sb[:fileNameStart], item.Name()...)
 
+			log.Debug("Trying opener", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
 			st, err := opener.Stat(dw.fsys, unsafe.String(unsafe.SliceData(sb), len(sb)))
 			switch {
 			case errors.Is(err, nil):
+				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
 				items[i] = fs.FileInfoToDirEntry(st)
 			case errors.Is(err, fs.ErrNotExist):
 				continue
@@ -52,6 +57,8 @@ func (dw *dirWrapper) Readdir(n int) ([]os.DirEntry, error) {
 		return items, err
 	}
 
+	log := slog.With(slog.String("request_path", dw.Name()), slog.String("op", "readdir"))
+
 	// to reduce allocations during full path generation
 	sb := append([]byte(dw.File.Name()), filepath.Separator)
 	fileNameStart := len(sb)
@@ -60,9 +67,11 @@ func (dw *dirWrapper) Readdir(n int) ([]os.DirEntry, error) {
 		for j, opener := range dw.openers {
 			sb = append(sb[:fileNameStart], item.Name()...)
 
+			log.Debug("Trying opener", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
 			st, err := opener.Stat(dw.fsys, unsafe.String(unsafe.SliceData(sb), len(sb)))
 			switch {
 			case errors.Is(err, nil):
+				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
 				items[i] = fs.FileInfoToDirEntry(st)
 			case errors.Is(err, fs.ErrNotExist):
 				continue

@@ -3,6 +3,7 @@ package iso3k3y
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -25,8 +26,7 @@ type KeyExtractionFileWrapper struct{}
 
 func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
 	// 3k3y makes sense only for iso images
-	ext := filepath.Ext(f.Name())
-	if strings.ToLower(ext) != isoExt {
+	if !strings.EqualFold(filepath.Ext(f.Name()), isoExt) {
 		return f, nil
 	}
 
@@ -41,9 +41,11 @@ func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) 
 	case errors.Is(err, nil):
 		if len(key) == 0 {
 			// unencrypted 3k3y
+			slog.Debug("unencrypted 3k3y image detected", slog.String("name", f.Name()))
 			return NewISO3k3y(f)
 		}
 
+		slog.Debug("encrypted 3k3y image with key detected", slog.String("name", f.Name()))
 		return &keyedFile{
 			File: f,
 			key:  key,
@@ -53,6 +55,10 @@ func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) 
 	default:
 		return nil, fmt.Errorf("test 3k3y: %w", err)
 	}
+}
+
+func (KeyExtractionFileWrapper) Name() string {
+	return "3k3y_key_extractor"
 }
 
 type FileWrapper struct{}
@@ -84,4 +90,8 @@ func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File
 	default:
 		return nil, fmt.Errorf("test 3k3y: %w", err)
 	}
+}
+
+func (FileWrapper) Name() string {
+	return "3k3y_wrapper"
 }

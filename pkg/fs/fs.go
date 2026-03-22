@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,11 +26,13 @@ type SystemRoot interface {
 type FileOpener interface {
 	Open(fsys SystemRoot, path string) (handler.File, error)
 	Stat(fsys SystemRoot, path string) (fs.FileInfo, error)
+	Name() string
 }
 
 // FileWrapper applies on already open file. It returns unmodified input and no error if it's not applied.
 type FileWrapper interface {
 	WrapFile(fsys SystemRoot, file handler.File) (handler.File, error)
+	Name() string
 }
 
 type FS struct {
@@ -48,19 +51,23 @@ func NewFS(root SystemRoot, openers []FileOpener, wrappers []FileWrapper) *FS {
 
 func (fsys *FS) Open(path string) (handler.File, error) {
 	path = strings.TrimPrefix(path, string(filepath.Separator))
-	for i, opener := range fsys.openers {
+	log := slog.With(slog.String("path_request", path), slog.String("fs_op", "open"))
+	for _, opener := range fsys.openers {
+		log.Debug("Trying opener", slog.String("opener", opener.Name()))
 		file, err := opener.Open(fsys.root, path)
 		switch {
 		case errors.Is(err, nil):
+			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
 			return file, err
 		case errors.Is(err, fs.ErrNotExist):
 			continue
 		default:
-			return nil, fmt.Errorf("opener %d: %w", i, err)
+			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
 		}
 	}
 
 	// if we're here try to open raw requested path
+	log.Debug("Openers didn't succeed, trying native")
 	f, err := fsys.root.Open(path)
 	if err != nil {
 		return f, err
@@ -81,10 +88,11 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 		}
 	}
 
-	for i, wrapper := range fsys.wrappers {
+	for _, wrapper := range fsys.wrappers {
+		log.Debug("Applying wrapper", slog.String("wrapper", wrapper.Name()))
 		ret, err = wrapper.WrapFile(fsys.root, ret)
 		if err != nil {
-			return nil, fmt.Errorf("wrapper %d: %w", i, err)
+			return nil, fmt.Errorf("wrapper %s: %w", wrapper.Name(), err)
 		}
 	}
 
@@ -97,10 +105,13 @@ func (fsys *FS) Create(name string) (handler.WritableFile, error) {
 
 func (fsys *FS) Stat(name string) (fs.FileInfo, error) {
 	name = strings.TrimPrefix(name, string(filepath.Separator))
+	log := slog.With(slog.String("path_request", name), slog.String("fs_op", "stat"))
 	for i, opener := range fsys.openers {
+		log.Debug("Trying opener", slog.String("opener", opener.Name()))
 		st, err := opener.Stat(fsys.root, name)
 		switch {
 		case errors.Is(err, nil):
+			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
 			return st, err
 		case errors.Is(err, fs.ErrNotExist):
 			continue
@@ -109,6 +120,7 @@ func (fsys *FS) Stat(name string) (fs.FileInfo, error) {
 		}
 	}
 
+	log.Debug("Openers didn't succeed, trying native")
 	return fsys.root.Stat(name)
 }
 

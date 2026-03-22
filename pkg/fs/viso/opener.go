@@ -2,6 +2,7 @@ package viso
 
 import (
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -41,10 +42,15 @@ func (Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) {
 		return nil, fs.ErrNotExist
 	}
 
+	slog.Debug("Engaging Virtual ISO", slog.String("path", path), slog.Bool("ps3_mode", typ == virtualPS3ISOFile))
 	return NewVirtualISO(fsys, path, typ == virtualPS3ISOFile)
 }
 
 func (Opener) Stat(fsys pkgfs.SystemRoot, path string) (fs.FileInfo, error) {
 	// special handling doesn't necessary here
 	return nil, fs.ErrNotExist
+}
+
+func (Opener) Name() string {
+	return "viso"
 }

@@ -27,10 +27,18 @@ func (FileTimesOpener) Stat(fsys pkgfs.SystemRoot, name string) (ret fs.FileInfo
 	return wrapFileInfoForExtendedTimes(fi), nil
 }
 
+func (FileTimesOpener) Name() string {
+	return "file_times"
+}
+
 type FileTimesWrapper struct{}
 
 func (FileTimesWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
 	return &fileWithTimesStat{f}, nil
+}
+
+func (FileTimesWrapper) Name() string {
+	return "file_times"
 }
 
 type fileWithTimesStat struct {

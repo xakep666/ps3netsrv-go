@@ -62,6 +62,7 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 		path = strings.TrimSuffix(path, ext)
 	}
 
+	o.logger.Debug("Trying to open CHD file", slog.String("path", path))
 	f, err := fsys.Open(path)
 	if err != nil {
 		return nil, err
@@ -83,10 +84,19 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 		if err != nil {
 			return nil, err
 		}
+		o.logger.Debug("Detected CD-encoded CHD, wrapping",
+			slog.String("path", path),
+			slog.Int("sector_data_size", cdFile.SectorDataSize),
+			slog.Int64("sectors_count", cdFile.SectorsCount),
+		)
 		return &fileView{cdFile}, nil
 	}
 
 	return &fileView{cf}, nil
+}
+
+func (*Opener) Name() string {
+	return "chd"
 }
 
 type fileView struct {

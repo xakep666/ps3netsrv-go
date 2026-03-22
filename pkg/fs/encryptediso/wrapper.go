@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,18 +22,24 @@ type keyedFile interface {
 
 func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
 	if kf, ok := f.(keyedFile); ok {
+		slog.Debug("received encrypted key-contained iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, kf.EncryptionKey(), false)
 	}
 
 	key, err := tryGetRedumpKey(fsys, f.Name())
 	switch {
 	case errors.Is(err, nil):
+		slog.Debug("found key file for encrypted iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, key, false)
 	case errors.Is(err, fs.ErrNotExist):
 		return f, nil
 	default:
 		return nil, fmt.Errorf("read key: %w", err)
 	}
+}
+
+func (FileWrapper) Name() string {
+	return "redump_encrypted_iso"
 }
 
 // tryGetRedumpKey attempts to find encryption key for .iso image.
