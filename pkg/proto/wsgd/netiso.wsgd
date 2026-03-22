@@ -1,0 +1,16 @@
+PROTONAME PS3 Network ISO Protocol
+PROTOSHORTNAME PS3_NetISO
+PROTOABBREV ps3_netiso
+
+PARENT_SUBFIELD tcp.port
+PARENT_SUBFIELD_VALUES 38008
+
+MSG_HEADER_TYPE T_command_header
+MSG_HEADER_LENGTH 16
+MSG_ID_FIELD_NAME opcode
+MSG_TO_MAIN_TYPE T_command_switch(opcode)
+MSG_FROM_MAIN_TYPE T_generic_response
+
+PROTO_TYPE_DEFINITIONS
+
+include netiso.fdesc;

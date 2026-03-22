@@ -1,0 +1,76 @@
+enum16 T_command_opcode {
+    command_open_file 0x1224
+    command_read_file_critical 0x1225
+    command_read_2048_critical 0x1226
+    command_read_file 0x1227
+    command_create_file 0x1228
+    command_write_file 0x1229
+    command_open_dir 0x122A
+    command_read_dir_entry 0x122B
+    command_delete_file 0x122C
+    command_mkdir 0x122D
+    command_rmdir 0x122E
+    command_read_dir_entry_v2 0x122F
+    command_stat_file 0x1230
+    command_get_dir_size 0x1231
+    command_read_dir 0x1232
+
+    command_custom0 0x2412
+}
+
+struct T_command_header
+{
+    byte_order big_endian;
+    T_command_opcode opcode;
+}
+
+struct T_command_open_file
+{
+    byte_order big_endian;
+    T_command_header header;
+    uint16 fp_len;
+    raw(12) _;
+    string(fp_len) file_path;
+}
+
+alias T_command_stat_file T_command_open_file ;
+
+struct T_command_read_file
+{
+    byte_order big_endian;
+    T_command_header header;
+    raw(2) _;
+    uint32 bytes_to_read;
+    int64 offset;
+}
+
+alias T_command_read_file_critical T_command_read_file;
+
+struct T_command_read_cd_2048_critical
+{
+    byte_order big_endian;
+    T_command_header header;
+    raw(2) _;
+    uint32 start_sector;
+    uint32 sectors_to_read;
+    raw(4) _;
+}
+
+
+switch T_command_switch
+{
+case T_command_opcode::command_open_file : T_command_open_file "";
+case T_command_opcode::command_stat_file : T_command_stat_file "";
+case T_command_opcode::command_read_file : T_command_read_file "";
+case T_command_opcode::command_read_file_critical : T_command_read_file_critical "";
+case T_command_opcode::command_read_2048_critical : T_command_read_cd_2048_critical "";
+default :
+    T_command_header header;
+    raw(14) data;
+}
+
+struct T_generic_response
+{
+    byte_order big_endian;
+    raw(*) data;
+}
