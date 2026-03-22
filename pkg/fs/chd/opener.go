@@ -89,10 +89,10 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 			slog.Int("sector_data_size", cdFile.SectorDataSize),
 			slog.Int64("sectors_count", cdFile.SectorsCount),
 		)
-		return &fileView{cdFile}, nil
+		return &fileView{File: cdFile, openPath: path}, nil
 	}
 
-	return &fileView{cf}, nil
+	return &fileView{File: cf, openPath: path}, nil
 }
 
 func (*Opener) Name() string {
@@ -101,11 +101,12 @@ func (*Opener) Name() string {
 
 type fileView struct {
 	handler.File
+	openPath string
 }
 
 func (c *fileView) Name() string {
 	// add .iso to make ps3 recognise it as disk image
-	return c.File.Name() + isoExt
+	return c.openPath + isoExt
 }
 
 func (c *fileView) Stat() (fs.FileInfo, error) {

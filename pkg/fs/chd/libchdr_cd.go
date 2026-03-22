@@ -6,7 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"syscall"
-	"time"
 )
 
 func (f *CDFile) offsetToPosition(offset int64) (hunkNum, posInHunk, end int) {
@@ -82,32 +81,21 @@ func (f *CDFile) Seek(offset int64, whence int) (int64, error) {
 }
 
 type cdFileStat struct {
-	*CDFile
+	fs.FileInfo
+	size int64
 }
 
 func (s *cdFileStat) Size() int64 {
-	return s.CDFile.Size
+	return s.size
 }
 
 func (s *cdFileStat) Mode() fs.FileMode {
-	return s.originalFileInfo.Mode() | fs.ModeIrregular
-}
-
-func (s *cdFileStat) Sys() any {
-	return s.originalFileInfo.Sys()
-}
-
-func (s *cdFileStat) IsDir() bool {
-	return false
-}
-
-func (s *cdFileStat) ModTime() time.Time {
-	return s.originalFileInfo.ModTime()
+	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
 func (f *CDFile) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err
 	}
-	return &cdFileStat{f}, nil
+	return &cdFileStat{FileInfo: f.originalFileInfo, size: f.Size}, nil
 }

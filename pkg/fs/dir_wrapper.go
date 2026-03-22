@@ -13,8 +13,9 @@ import (
 type dirWrapper struct {
 	*os.File
 
-	fsys    SystemRoot
-	openers []FileOpener
+	fsys     SystemRoot
+	openPath string // preserve path which used in Open
+	openers  []FileOpener
 }
 
 func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
@@ -23,28 +24,8 @@ func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
 		return items, err
 	}
 
-	log := slog.With(slog.String("request_path", dw.Name()), slog.String("op", "readdir"))
-
-	// to reduce allocations during full path generation
-	sb := append([]byte(dw.File.Name()), filepath.Separator)
-	fileNameStart := len(sb)
-
-	for i, item := range items {
-		for j, opener := range dw.openers {
-			sb = append(sb[:fileNameStart], item.Name()...)
-
-			log.Debug("Trying opener", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
-			st, err := opener.Stat(dw.fsys, unsafe.String(unsafe.SliceData(sb), len(sb)))
-			switch {
-			case errors.Is(err, nil):
-				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
-				items[i] = fs.FileInfoToDirEntry(st)
-			case errors.Is(err, fs.ErrNotExist):
-				continue
-			default:
-				return nil, fmt.Errorf("stat via opener %d: %w", j, err)
-			}
-		}
+	if err = dw.modifyEntries(items); err != nil {
+		return nil, err
 	}
 
 	return items, nil
@@ -57,12 +38,21 @@ func (dw *dirWrapper) Readdir(n int) ([]os.DirEntry, error) {
 		return items, err
 	}
 
-	log := slog.With(slog.String("request_path", dw.Name()), slog.String("op", "readdir"))
+	if err = dw.modifyEntries(items); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (dw *dirWrapper) modifyEntries(items []fs.DirEntry) error {
+	log := slog.With(slog.String("request_path", dw.openPath), slog.String("op", "readdir"))
 
 	// to reduce allocations during full path generation
-	sb := append([]byte(dw.File.Name()), filepath.Separator)
+	sb := append([]byte(dw.openPath), filepath.Separator)
 	fileNameStart := len(sb)
 
+itemsLoop:
 	for i, item := range items {
 		for j, opener := range dw.openers {
 			sb = append(sb[:fileNameStart], item.Name()...)
@@ -73,13 +63,14 @@ func (dw *dirWrapper) Readdir(n int) ([]os.DirEntry, error) {
 			case errors.Is(err, nil):
 				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
 				items[i] = fs.FileInfoToDirEntry(st)
+				continue itemsLoop
 			case errors.Is(err, fs.ErrNotExist):
 				continue
 			default:
-				return nil, fmt.Errorf("stat via opener %d: %w", j, err)
+				return fmt.Errorf("stat via opener %d: %w", j, err)
 			}
 		}
 	}
 
-	return items, nil
+	return nil
 }

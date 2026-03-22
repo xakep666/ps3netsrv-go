@@ -355,10 +355,6 @@ func (s *fileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
-func (s *fileStat) Sys() any {
-	return s.FileInfo.Sys()
-}
-
 func (f *File) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err

@@ -82,9 +82,10 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 	ret := handler.File(f)
 	if stat.IsDir() {
 		ret = &dirWrapper{
-			File:    f,
-			fsys:    fsys.root,
-			openers: fsys.openers,
+			File:     f,
+			fsys:     fsys.root,
+			openPath: path,
+			openers:  fsys.openers,
 		}
 	}
 
