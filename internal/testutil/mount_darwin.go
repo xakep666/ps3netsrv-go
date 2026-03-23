@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"testing"
 	"unicode"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -13,31 +16,23 @@ const (
 	MultiExtentFileSupported = false
 )
 
-func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
-	tempDir, err := os.MkdirTemp("", "ps3netsrv_iso")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to make temp dir: %w", err)
-	}
+func MountISO(t *testing.T, isoPath string) string {
+	t.Helper()
+
+	tempDir, err := os.MkdirTemp(t.TempDir(), "ps3netsrv_iso")
+	require.NoError(t, err, "failed to make temp dir")
 
 	devPath, err := exec.Command("hdiutil", "attach", "-nomount", isoPath).Output()
-	if err != nil {
-		_ = os.Remove(tempDir)
-
-		return "", nil, fmt.Errorf("hdiutil error: %w", err)
-	}
+	require.NoErrorf(t, err, "hdutil error")
 
 	devPath = bytes.TrimFunc(devPath, unicode.IsSpace)
 
-	detach := func() error {
-		defer os.Remove(tempDir)
+	t.Cleanup(func() {
+		t.Helper()
 
 		out, err := exec.Command("hdiutil", "detach", string(devPath)).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("hdiutil error: %s: %w", bytes.Trim(out, "\n\t"), err)
-		}
-
-		return nil
-	}
+		require.NoErrorf(t, err, "hdiutil error: %w", bytes.Trim(out, "\n\t"))
+	})
 
 	out, err := exec.Command("osascript", "-e",
 		fmt.Sprintf(
@@ -45,11 +40,7 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 			devPath, tempDir,
 		),
 	).CombinedOutput()
-	if err != nil {
-		_ = detach()
+	require.NoErrorf(t, err, "mount error: %s", out)
 
-		return "", nil, fmt.Errorf("mount error: %s: %w", out, err)
-	}
-
-	return tempDir, detach, nil
+	return tempDir
 }

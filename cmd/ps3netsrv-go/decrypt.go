@@ -5,7 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
 )
 
 type decrypt3k3yCmd struct {
@@ -14,7 +15,7 @@ type decrypt3k3yCmd struct {
 }
 
 func (c *decrypt3k3yCmd) Run() error {
-	key, err := fs.Test3k3yImage(c.Image)
+	key, err := iso3k3y.Test3k3yImage(c.Image)
 	if err != nil {
 		return fmt.Errorf("failed to get 3k3y image key: %w", err)
 	}
@@ -22,7 +23,7 @@ func (c *decrypt3k3yCmd) Run() error {
 		return fmt.Errorf("image is not encrypted")
 	}
 
-	imageWrapped, err := fs.NewEncryptedISO(c.Image, key, true)
+	imageWrapped, err := encryptediso.NewEncryptedISO(c.Image, key, true)
 	if err != nil {
 		return err
 	}
@@ -40,12 +41,12 @@ type decryptRedumpCmd struct {
 }
 
 func (c *decryptRedumpCmd) Run() error {
-	key, err := fs.ReadKeyFile(c.Key)
+	key, err := encryptediso.ReadKeyFile(c.Key)
 	if err != nil {
 		return fmt.Errorf("key read failed: %w", err)
 	}
 
-	imageWrapped, err := fs.NewEncryptedISO(c.Image, key, true)
+	imageWrapped, err := encryptediso.NewEncryptedISO(c.Image, key, true)
 	if err != nil {
 		return err
 	}

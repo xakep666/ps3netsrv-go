@@ -1,9 +1,11 @@
 package testutil
 
 import (
-	"fmt"
+	"testing"
 	"unsafe"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/windows"
 )
 
@@ -30,13 +32,12 @@ type attachParameters struct {
 	Version int
 }
 
-func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
+func MountISO(t *testing.T, isoPath string) string {
+	t.Helper()
 	var handle windows.Handle
 
 	pathPtr, err := windows.UTF16PtrFromString(isoPath)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to make path pointer: %w", err)
-	}
+	require.NoError(t, err, "failed to make path pointer")
 
 	_, _, err = openVirtualDisk.Call(
 		// VirtualStorageType
@@ -54,9 +55,7 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 		// Handle
 		uintptr(unsafe.Pointer(&handle)),
 	)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed open virtual disk: %w", err)
-	}
+	require.NoError(t, err, "failed to open virtual disk")
 
 	_, _, err = attachVirtualDisk.Call(
 		// Handle
@@ -76,9 +75,7 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 		// Overlapped
 		0,
 	)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed attach virtual disk: %w", err)
-	}
+	require.NoError(t, err, "failed to attach virtual disk")
 
 	var path [windows.MAX_PATH / 2]uint16
 
@@ -90,12 +87,10 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 		// DiskPath
 		uintptr(unsafe.Pointer(&path[0])),
 	)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to get disk path: %w", err)
-	}
+	require.NoError(t, err, "failed to get disk path")
 
-	return windows.UTF16ToString(path[:]), func() error {
-		defer windows.Close(handle)
+	t.Cleanup(func() {
+		t.Helper()
 
 		_, _, err := detachVirtualDisk.Call(
 			// Handle
@@ -105,7 +100,10 @@ func MountISO(isoPath string) (targetPath string, cleanup func() error, err erro
 			// ProviderSpecificFlags
 			0,
 		)
+		assert.NoError(t, err, "failed to detach virtual disk")
 
-		return err
-	}, nil
+		require.NoError(t, windows.Close(handle))
+	})
+
+	return windows.UTF16ToString(path[:])
 }

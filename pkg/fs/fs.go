@@ -4,28 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
-)
-
-type fileType int
-
-const (
-	genericFile fileType = iota
-	virtualISOFile
-	virtualPS3ISOFile
-)
-
-const (
-	virtualISOMask    = string(filepath.Separator) + "***DVD***" + string(filepath.Separator)
-	virtualPS3ISOMask = string(filepath.Separator) + "***PS3***" + string(filepath.Separator)
-)
-
-type (
-	privateFile = handler.File
 )
 
 // SystemRoot needed to abstract *os.Root and it's relaxed implementation that allows outside symlinks.
@@ -37,95 +21,83 @@ type SystemRoot interface {
 	Mkdir(path string, mode os.FileMode) error
 }
 
+// FileOpener is a wrapper that incapsulates a path detection/translation logic.
+// It's methods return [fs.ErrNotExist] in case it didn't perform.
+type FileOpener interface {
+	Open(fsys SystemRoot, path string) (handler.File, error)
+	Stat(fsys SystemRoot, path string) (fs.FileInfo, error)
+	Name() string
+}
+
+// FileWrapper applies on already open file. It returns unmodified input and no error if it's not applied.
+type FileWrapper interface {
+	WrapFile(fsys SystemRoot, file handler.File) (handler.File, error)
+	Name() string
+}
+
 type FS struct {
-	root SystemRoot
+	root     SystemRoot
+	openers  []FileOpener  // iterated until success
+	wrappers []FileWrapper // wraps file in chain, used in case openers didn't success
 }
 
-func NewFS(root SystemRoot) *FS {
-	return &FS{root: root}
-}
-
-func translatePath(path string) (string, fileType) {
-	switch {
-	case strings.HasPrefix(path, virtualISOMask):
-		return strings.TrimPrefix(path, virtualISOMask), virtualISOFile
-	case strings.HasPrefix(path, virtualPS3ISOMask):
-		return strings.TrimPrefix(path, virtualPS3ISOMask), virtualPS3ISOFile
-	default:
-		return strings.TrimPrefix(path, string(filepath.Separator)), genericFile // avoid os path separator at the beginning
+func NewFS(root SystemRoot, openers []FileOpener, wrappers []FileWrapper) *FS {
+	return &FS{
+		root:     root,
+		openers:  openers,
+		wrappers: wrappers,
 	}
 }
 
 func (fsys *FS) Open(path string) (handler.File, error) {
-	path, typ := translatePath(path)
-	if typ == virtualPS3ISOFile || typ == virtualISOFile {
-		return NewVirtualISO(fsys, path, typ == virtualPS3ISOFile)
+	path = strings.TrimPrefix(path, string(filepath.Separator))
+	log := slog.With(slog.String("path_request", path), slog.String("fs_op", "open"))
+	for _, opener := range fsys.openers {
+		log.Debug("Trying opener", slog.String("opener", opener.Name()))
+		file, err := opener.Open(fsys.root, path)
+		switch {
+		case errors.Is(err, nil):
+			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
+			return file, err
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		default:
+			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
+		}
 	}
 
+	// if we're here try to open raw requested path
+	log.Debug("Openers didn't succeed, trying native")
 	f, err := fsys.root.Open(path)
 	if err != nil {
 		return f, err
 	}
 
-	// do not try wrappers if it is a directory
+	// special wrapper for directories to process ReadDir with opener's Stat
 	stat, err := f.Stat()
 	if err != nil {
 		return f, err
 	}
 
+	ret := handler.File(f)
 	if stat.IsDir() {
-		return f, nil
+		ret = &dirWrapper{
+			File:     f,
+			fsys:     fsys.root,
+			openPath: path,
+			openers:  fsys.openers,
+		}
 	}
 
-	key, err := tryGetRedumpKey(fsys, path)
-	switch {
-	case errors.Is(err, nil):
-		ef, err := NewEncryptedISO(f, key, false)
+	for _, wrapper := range fsys.wrappers {
+		log.Debug("Applying wrapper", slog.String("wrapper", wrapper.Name()))
+		ret, err = wrapper.WrapFile(fsys.root, ret)
 		if err != nil {
-			_ = f.Close()
-			return nil, err
+			return nil, fmt.Errorf("wrapper %s: %w", wrapper.Name(), err)
 		}
-
-		return ef, nil
-	case errors.Is(err, fs.ErrNotExist):
-		// pass
-	default:
-		_ = f.Close()
-		return nil, fmt.Errorf("redump key read failed: %w", err)
 	}
 
-	key, err = Test3k3yImage(f)
-	switch {
-	case errors.Is(err, nil) && len(key) != 0:
-		ef, err := NewEncryptedISO(f, key, false)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-
-		_3k3yf, err := NewISO3k3y(ef)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-
-		return _3k3yf, nil
-	case errors.Is(err, nil) && len(key) == 0:
-		_3k3yf, err := NewISO3k3y(f)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-
-		return _3k3yf, nil
-	case errors.Is(err, ErrNot3k3y):
-		// pass
-	default:
-		_ = f.Close()
-		return nil, fmt.Errorf("3k3y test failed: %w", err)
-	}
-
-	return f, nil
+	return ret, nil
 }
 
 func (fsys *FS) Create(name string) (handler.WritableFile, error) {
@@ -133,7 +105,24 @@ func (fsys *FS) Create(name string) (handler.WritableFile, error) {
 }
 
 func (fsys *FS) Stat(name string) (fs.FileInfo, error) {
-	return fsys.root.Stat(strings.TrimPrefix(name, string(filepath.Separator)))
+	name = strings.TrimPrefix(name, string(filepath.Separator))
+	log := slog.With(slog.String("path_request", name), slog.String("fs_op", "stat"))
+	for i, opener := range fsys.openers {
+		log.Debug("Trying opener", slog.String("opener", opener.Name()))
+		st, err := opener.Stat(fsys.root, name)
+		switch {
+		case errors.Is(err, nil):
+			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
+			return st, err
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		default:
+			return nil, fmt.Errorf("opener %d: %w", i, err)
+		}
+	}
+
+	log.Debug("Openers didn't succeed, trying native")
+	return fsys.root.Stat(name)
 }
 
 func (fsys *FS) Remove(name string) error {

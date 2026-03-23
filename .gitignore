@@ -14,11 +14,10 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+/thirdparty
 
 .idea
 .DS_Store
 /dist
 test_gen.iso
 /ps3netsrv-go
-

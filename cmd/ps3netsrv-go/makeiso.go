@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
 )
 
 type makeISOApp struct {
@@ -15,8 +16,7 @@ type makeISOApp struct {
 }
 
 func (a *makeISOApp) Run() error {
-	baseFS := fs.NewFS(fs.NewRelaxedSystemRoot(a.Directory))
-	viso, err := fs.NewVirtualISO(baseFS, ".", a.PS3Mode)
+	viso, err := viso.NewVirtualISO(fs.NewRelaxedSystemRoot(a.Directory), ".", a.PS3Mode)
 	if err != nil {
 		return fmt.Errorf("failed to build ISO: %w", err)
 	}

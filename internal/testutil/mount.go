@@ -2,11 +2,19 @@
 
 package testutil
 
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
 const (
 	MountSupported           = false
 	MultiExtentFileSupported = false
 )
 
-func MountISO(isoPath string) (targetPath string, cleanup func() error, err error) {
-	panic("not supported platform")
+func MountISO(t *testing.T, isoPath string) string {
+	t.Helper()
+	require.FailNow(t, "unsupported platform")
+	return ""
 }

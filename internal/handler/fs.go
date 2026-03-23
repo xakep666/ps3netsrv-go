@@ -9,7 +9,6 @@ import (
 
 type File interface {
 	fs.ReadDirFile
-	io.ReaderAt
 	io.Seeker
 	Name() string
 }

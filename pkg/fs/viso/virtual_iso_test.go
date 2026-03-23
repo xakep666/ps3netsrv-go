@@ -1,4 +1,4 @@
-package fs_test
+package viso_test
 
 import (
 	"crypto/rand"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/xakep666/ps3netsrv-go/internal/testutil"
-	"github.com/xakep666/ps3netsrv-go/pkg/fs"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
 )
 
 func TestMakeFullImage(t *testing.T) {
@@ -36,19 +36,18 @@ func TestMakeFullImage(t *testing.T) {
 	root, err := os.OpenRoot(t.TempDir())
 	require.NoError(t, err)
 
-	baseFS := fs.NewFS(root)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
 
-	require.NoError(t, baseFS.Mkdir(isoRoot, os.ModePerm))
+	require.NoError(t, root.Mkdir(isoRoot, os.ModePerm))
 	require.NoError(t,
 		root.WriteFile(filepath.Join(isoRoot, "test.txt"), []byte("hello world"), os.ModePerm),
 	)
-	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1"), os.ModePerm))
+	require.NoError(t, root.Mkdir(filepath.Join(isoRoot, "dir1"), os.ModePerm))
 	require.NoError(t,
 		root.WriteFile(filepath.Join(isoRoot, "dir1", "A.TXT"), []byte("a content"), os.ModePerm),
 	)
-	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
+	require.NoError(t, root.Mkdir(filepath.Join(isoRoot, "dir1", "DIR2"), os.ModePerm))
 	require.NoError(t,
 		root.WriteFile(filepath.Join(isoRoot, "dir1", "DIR2", "b.txt"), []byte("b content"), os.ModePerm),
 	)
@@ -60,14 +59,14 @@ func TestMakeFullImage(t *testing.T) {
 	_, err = io.ReadFull(rand.Reader, multiSectorFile[:])
 	require.NoError(t, err)
 
-	require.NoError(t, baseFS.Mkdir(filepath.Join(isoRoot, "dir2"), os.ModePerm))
+	require.NoError(t, root.Mkdir(filepath.Join(isoRoot, "dir2"), os.ModePerm))
 	require.NoError(t,
 		root.WriteFile(filepath.Join(isoRoot, "dir2", "multisector.bin"), multiSectorFile[:], os.ModePerm),
 	)
 
 	if !testing.Short() {
 		t.Logf("Generate big file to test multiextent file")
-		f, err := baseFS.Create(filepath.Join(isoRoot, "dir2", "big.bin"))
+		f, err := root.Create(filepath.Join(isoRoot, "dir2", "big.bin"))
 		require.NoError(t, err)
 
 		hw := sha256.New()
@@ -82,21 +81,13 @@ func TestMakeFullImage(t *testing.T) {
 		t.Logf("Generated file hash: %x", bigFileHash)
 	}
 
-	viso, err := fs.NewVirtualISO(baseFS, isoRoot, false)
+	viso, err := viso.NewVirtualISO(root, isoRoot, false)
 	require.NoError(t, err)
 
-	isoFile, err := os.CreateTemp("", "test_gen*.iso")
+	isoFile, err := os.CreateTemp(t.TempDir(), "test_gen*.iso")
 	require.NoError(t, err)
 
 	t.Logf("Created ISO file at %s", isoFile.Name())
-
-	t.Cleanup(func() {
-		if !t.Failed() {
-			require.NoError(t, os.Remove(isoFile.Name()))
-		} else {
-			t.Logf("Not removing file so it can be debugged")
-		}
-	})
 
 	written, err := io.Copy(isoFile, viso)
 	if assert.NoError(t, err) {
@@ -106,10 +97,7 @@ func TestMakeFullImage(t *testing.T) {
 	require.NoError(t, isoFile.Close())
 
 	t.Logf("Root permission may be required for mounting")
-	mountPath, unmount, err := testutil.MountISO(isoFile.Name())
-	require.NoError(t, err)
-
-	t.Cleanup(func() { require.NoError(t, unmount()) })
+	mountPath := testutil.MountISO(t, isoFile.Name())
 
 	t.Run("test.txt", func(t *testing.T) {
 		content, err := os.ReadFile(filepath.Join(mountPath, "test.txt"))

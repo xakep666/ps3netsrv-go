@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/xakep666/ps3netsrv-go/internal/copier"
+	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
 )
@@ -24,7 +24,7 @@ type Context = server.Context[State]
 type Handler struct {
 	Fs FS
 
-	Copier     *copier.Copier
+	Copier     *ioutil.Copier
 	AllowWrite bool
 }
 
@@ -96,7 +96,7 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 			continue
 		}
 
-		return wrapFileInfoForExtendedTimes(fileInfo)
+		return fileInfo
 	}
 }
 
@@ -148,7 +148,7 @@ func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	info, err := h.Fs.Stat(filepath.FromSlash(path))
 	switch {
 	case errors.Is(err, nil):
-		return wrapFileInfoForExtendedTimes(info), nil
+		return info, nil
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, err
 	default:
@@ -434,7 +434,7 @@ func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 	return size, nil
 }
 
-func determineSectorSize(f io.ReaderAt) (int, error) {
+func determineSectorSize(f io.ReadSeeker) (sectorSize int, err error) {
 	// sorted
 	sectorSizes := [...]int{2048, 2328, 2336, 2340, 2352, 2368, 2448}
 	const (
@@ -443,7 +443,7 @@ func determineSectorSize(f io.ReaderAt) (int, error) {
 		extraBytes        = 2 // between magic1 and magic2
 		systemAreaSectors = 16
 	)
-	// We can detect sector size for 1 read(at) system call
+	// We can detect sector size for 1 read system call
 	// to do this we read amount of data that equals to difference between maximum and minimum sector size
 	// plus length of magic1 and magic2 plus two bytes between them.
 	// After successful reading we just try to locate magic1 or magic2 by offsets determined by
@@ -451,12 +451,8 @@ func determineSectorSize(f io.ReaderAt) (int, error) {
 	minMaxDifference := sectorSizes[len(sectorSizes)-1] - sectorSizes[0]
 	buf := make([]byte, minMaxDifference+len(magic1)+extraBytes+len(magic2))
 
-	n, err := f.ReadAt(buf, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]))
-	if err != nil {
-		return -1, fmt.Errorf("read failed: %w", err)
-	}
-	if n != len(buf) {
-		return -1, fmt.Errorf("read failed: expected %d bytes, got %d", len(buf), n)
+	if err := ioutil.FillBuffer(f, psxPrefixSize+systemAreaSectors*int64(sectorSizes[0]), buf); err != nil {
+		return -1, err
 	}
 
 	for _, sectorSize := range sectorSizes {

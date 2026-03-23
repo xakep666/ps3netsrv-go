@@ -16,7 +16,7 @@ builds:
       - arm
     ignore:
       - goos: windows
-        goarch: arm     
+        goarch: arm
     main: ./cmd/ps3netsrv-go
     ldflags:
       - "-w -s"
@@ -36,6 +36,13 @@ archives:
     format_overrides:
       - goos: windows
         formats: [ 'zip' ]
+    files: 
+      - LICENSE
+      - README.md
+      # include compiled libchdr
+      - src: "./thirdparty/libchdr/libchdr-{{ .Os }}-{{ .Arch }}/*"
+        dst: .
+        strip_parent: true
 dockers_v2:
   - images:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
@@ -53,6 +60,7 @@ dockers_v2:
       "org.opencontainers.image.licenses": "MIT"
     extra_files:
       - package/layout
+      - thirdparty/libchdr
 nfpms:
   - homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
     description: |-
@@ -67,6 +75,8 @@ nfpms:
       - deb
       - rpm
       - archlinux
+    recommends:
+      - libchdr
     contents:
       - src: package/linux/ps3netsrv-go.service
         dst: /usr/lib/systemd/system/ps3netsrv-go.service
