@@ -71,7 +71,7 @@ func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File
 
 	// 3k3y makes sense only for iso images
 	ext := filepath.Ext(f.Name())
-	if strings.ToLower(ext) != isoExt {
+	if strings.EqualFold(ext, isoExt) {
 		return f, nil
 	}
 

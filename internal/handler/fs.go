@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"path"
+	"path/filepath"
 )
 
 type File interface {
@@ -77,7 +77,7 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 		}
 
 		for _, d1 := range dirs {
-			name1 := path.Join(name, d1.Name())
+			name1 := filepath.Join(name, d1.Name())
 			if err := walkDir(fsys, name1, d1, walkDirFn); err != nil {
 				if errors.Is(err, fs.SkipDir) {
 					break
