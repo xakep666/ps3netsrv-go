@@ -93,6 +93,10 @@ func (iso *ISO3k3y) Seek(offset int64, whence int) (int64, error) {
 	return newOffset, nil
 }
 
+func (iso *ISO3k3y) Unwrap() handler.File {
+	return iso.privateFile
+}
+
 // Test3k3yImage performs checks if it is 3k3y image and returns ErrNot3k3y if not.
 // If key is not empty then image is encrypted.
 func Test3k3yImage(f io.ReadSeeker) ([]byte, error) {

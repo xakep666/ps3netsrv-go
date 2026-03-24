@@ -21,7 +21,7 @@ type keyedFile interface {
 }
 
 func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
-	if kf, ok := f.(keyedFile); ok {
+	if kf, ok := handler.FileAsType[keyedFile](f); ok {
 		slog.Debug("received encrypted key-contained iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, kf.EncryptionKey(), false)
 	}
@@ -46,13 +46,13 @@ func (FileWrapper) Name() string {
 func tryGetRedumpKey(fsys pkgfs.SystemRoot, requestedPath string) ([]byte, error) {
 	// encryption makes sense only for .iso or .ISO file inside ps3ISO or PS3ISO directory
 	ext := filepath.Ext(requestedPath)
-	if strings.ToLower(ext) != isoExt {
+	if strings.EqualFold(ext, isoExt) {
 		return nil, fs.ErrNotExist
 	}
 
 	pathElems := strings.Split(requestedPath, string(filepath.Separator))
 	ps3IsoIdx := slices.IndexFunc(pathElems, func(s string) bool {
-		return strings.ToLower(s) == ps3isoDir
+		return strings.EqualFold(s, ps3isoDir)
 	})
 	if ps3IsoIdx < 0 {
 		return nil, fs.ErrNotExist

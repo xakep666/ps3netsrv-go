@@ -10,27 +10,6 @@ import (
 	pkgfs "github.com/xakep666/ps3netsrv-go/pkg/fs"
 )
 
-type FileTimesOpener struct{}
-
-func (FileTimesOpener) Open(fsys pkgfs.SystemRoot, name string) (handler.File, error) {
-	// should not open file here, this is for regular files
-	return nil, fs.ErrNotExist
-}
-
-func (FileTimesOpener) Stat(fsys pkgfs.SystemRoot, name string) (ret fs.FileInfo, err error) {
-	// perform a normal stat first
-	fi, err := fsys.Stat(name)
-	if err != nil {
-		return fi, err
-	}
-
-	return wrapFileInfoForExtendedTimes(fi), nil
-}
-
-func (FileTimesOpener) Name() string {
-	return "file_times"
-}
-
 type FileTimesWrapper struct{}
 
 func (FileTimesWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
@@ -54,6 +33,10 @@ func (f *fileWithTimesStat) Stat() (fs.FileInfo, error) {
 	return wrapFileInfoForExtendedTimes(fi), nil
 }
 
+func (f *fileWithTimesStat) Unwrap() handler.File {
+	return f.File
+}
+
 type fileInfoWithTimes struct {
 	fs.FileInfo
 	spec times.Timespec
@@ -65,6 +48,10 @@ func (f fileInfoWithTimes) AccessTime() time.Time {
 
 func (f fileInfoWithTimes) ChangeTime() time.Time {
 	return f.spec.ChangeTime()
+}
+
+func (f fileInfoWithTimes) Unwrap() fs.FileInfo {
+	return f.FileInfo
 }
 
 func wrapFileInfoForExtendedTimes(fi fs.FileInfo) (ret fs.FileInfo) {

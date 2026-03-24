@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"structs"
+
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 type CompressionCodec uint32
@@ -281,4 +283,8 @@ func (f *File) AsCD() (*CDFile, error) {
 		SectorsCount:   totalFrames,
 		SectorDataSize: sectorDataSize,
 	}, nil
+}
+
+func (c *CDFile) Unwrap() handler.File {
+	return c.privateFile
 }

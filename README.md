@@ -9,17 +9,28 @@ I made it because original code is way hard to read and hard to build for some p
 This project written in Go because it's (cross-)compilation is much easier than C/C++ and resulting binaries
 will run without any external library on target system.
 
-Currently multipart files are not supported. But I've added tcp data exchange timeouts to reduce amount of "hang" connections.
+## Features 
 
-Receiving files from console is supported now! Use flag `--allow-write` to enable this.
+### Unique ✳️
 
-Decryption of 3k3y/redump images on-the-fly is supported now! Keys search behaviour completely matches with original `ps3netsrv`:
-at first we try to find `.dkey` file for `.iso` in `PS3ISO` directory. Then we try to find `.dkey` in `REDKEY` directory.
-You can also use 
-```bash
-$ ps3netsrv-go decrypt
-```
-tool to decrypt images.
+* Write protection. Enabled by default, use flag `--allow-write` or corresponding parameter.
+* TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
+* [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
+
+### Supported ✅
+
+* Simple file transfer / directory listing
+* File streaming including game images in `PS3ISO`
+* PSX images streaming
+* Client addresses whitelist, capping amount of connections
+* Virtual ISO: games in directory format (residing in `GAMES`). Note: https://github.com/xakep666/ps3netsrv-go/issues/28
+* 3k3y/Redump images: if iso path is `<root>/PS3ISO/game.iso` than dedicated key expected at `<root>/PS3ISO/game.dkey` or at `<root>/REDKEY/game.dkey`
+
+### Unsupported ❌
+
+* Multipart files `*.666xx`
+* Subdir scanning if requested by WebMAN https://github.com/xakep666/ps3netsrv-go/issues/29
+* PS2 Games, more tests/debugging needed https://github.com/xakep666/ps3netsrv-go/issues/31
 
 ## Compressed images
 `ps3netsrv-go` supports compressed images to help save disk space. Currently only MAME CHD format is supported.
@@ -34,7 +45,7 @@ Powered by:
 * [zig cc](https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html) - C toolchain with fantastic cross-compilation abilities.
 
 #### Usage
-`libchdr` is required to be installed on the system. See [Installation](#installation-libchdr) for more details how to do this.
+`libchdr` is required to be installed on the system. See [Installation](#libchdr) for more details how to do this.
 
 Just put your `.chd` images into necessary directory under server root: `PSXISO`, `PS2ISO` or even `PS3ISO`. 
 In case of successful `libchdr` loading you will see a following log message on server start:
@@ -69,18 +80,6 @@ This libarary is required to enable CHD images support. It's included in a follo
 
 `libchdr` is **not included** in Linux packages but declared as a dependancy. Most distros contain it in their repos.
 If necessary, getting it compiled on Linux is pretty straightforward if you're familiar with `CMake`.
-
-### Note for non-glibc Linux distros users
-Due to usage of `purego` all Linux executables in releases are dynamically linked ones. 
-By default they're linked to run with `glibc` because it's most popular and widespread libc.
-However, some distros like Alpine uses different libc (`musl` in case of Alpine).
-If you try to run `ps3netsrv-go` executable from release directly on such distro, you'll get an error like
-```
-exec /path/to/ps3netsrv-go: no such file or directory
-```
-There are two ways to resolve this issue:
-* Compile from source code for necessary libc. Recommended way. See [Building](#building) for more details.
-* Run with loader: `/lib/ld-musl-<arch>.so.1 /path/to/ps3netsrv-go`. Downside: `libchdr` likely will not be loaded so CHD support will be disabled.
 
 ## Configuration
 Server supports configuration via environment variables and command line flags.
@@ -151,6 +150,18 @@ $ systemctl enable ps3netsrv-go
 to enable automatic startup.
 
 Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`.
+
+### Note for non-glibc Linux distros users
+Due to usage of `purego` all Linux executables in releases are dynamically linked ones. 
+By default they're linked to run with `glibc` because it's most popular and widespread libc.
+However, some distros like Alpine uses different libc (`musl` in case of Alpine).
+If you try to run `ps3netsrv-go` executable from release directly on such distro, you'll get an error like
+```
+exec /path/to/ps3netsrv-go: no such file or directory
+```
+There are two ways to resolve this issue:
+* Compile from source code for necessary libc. Recommended way. See [Building](#building) for more details.
+* Run with loader: `/lib/ld-musl-<arch>.so.1 /path/to/ps3netsrv-go`. Downside: `libchdr` likely will not be loaded so CHD support will be disabled.
 
 ### Windows
 To run as a service it's recommended to use [NSSM](https://nssm.cc/usage). It allows to specify user, startup args and environment variables. 

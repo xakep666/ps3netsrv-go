@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"unsafe"
+
+	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
 
 type dirWrapper struct {
-	*os.File
+	handler.File
 
 	fsys     SystemRoot
 	openPath string // preserve path which used in Open
@@ -19,20 +20,6 @@ type dirWrapper struct {
 }
 
 func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
-	items, err := dw.File.ReadDir(n)
-	if err != nil {
-		return items, err
-	}
-
-	if err = dw.modifyEntries(items); err != nil {
-		return nil, err
-	}
-
-	return items, nil
-}
-
-func (dw *dirWrapper) Readdir(n int) ([]os.DirEntry, error) {
-	// this is legacy method but wrap it anyway
 	items, err := dw.File.ReadDir(n)
 	if err != nil {
 		return items, err
@@ -73,4 +60,8 @@ itemsLoop:
 	}
 
 	return nil
+}
+
+func (dw *dirWrapper) Unwrap() handler.File {
+	return dw.File
 }

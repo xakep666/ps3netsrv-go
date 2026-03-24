@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
-	"path"
+	"path/filepath"
 )
 
 type File interface {
@@ -77,7 +77,7 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 		}
 
 		for _, d1 := range dirs {
-			name1 := path.Join(name, d1.Name())
+			name1 := filepath.Join(name, d1.Name())
 			if err := walkDir(fsys, name1, d1, walkDirFn); err != nil {
 				if errors.Is(err, fs.SkipDir) {
 					break
@@ -85,5 +85,19 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 				return err
 			}
 		}
+	}
+}
+
+// FileAsType works like [errors.AsType] but for [File].
+func FileAsType[T File](f File) (T, bool) {
+	for {
+		if e, ok := f.(T); ok {
+			return e, true
+		}
+		uw, isuw := f.(interface{ Unwrap() File })
+		if !isuw {
+			return *new(T), false
+		}
+		f = uw.Unwrap()
 	}
 }
