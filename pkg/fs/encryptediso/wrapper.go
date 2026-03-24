@@ -21,7 +21,7 @@ type keyedFile interface {
 }
 
 func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
-	if kf, ok := f.(keyedFile); ok {
+	if kf, ok := handler.FileAsType[keyedFile](f); ok {
 		slog.Debug("received encrypted key-contained iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, kf.EncryptionKey(), false)
 	}

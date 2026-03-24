@@ -200,6 +200,10 @@ func (e *EncryptedISO) setIVForSector(sector iso9660.SizeSectors) cipher.BlockMo
 	return e.cbcDec
 }
 
+func (e *EncryptedISO) Unwrap() handler.File {
+	return e.privateFile
+}
+
 func deriveISOKey(targetKey, data1Key []byte) error {
 	cip, err := aes.NewCipher(keyData1[:])
 	if err != nil {

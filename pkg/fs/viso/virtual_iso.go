@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/iso9660"
 	pkgfs "github.com/xakep666/ps3netsrv-go/pkg/fs"
 )
@@ -77,8 +76,6 @@ type VirtualISO struct {
 	fsBuf        iso9660.Encoder   // binary-encoded filesystem structures
 	files        filesList         // ordered by location list of files to read from fs
 	offset       iso9660.SizeBytes // used during Read and Seek
-
-	readDirRoot handler.File // used for ReadDir implementation
 }
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
@@ -769,16 +766,7 @@ func (viso *VirtualISO) Name() string {
 }
 
 func (viso *VirtualISO) ReadDir(count int) ([]fs.DirEntry, error) {
-	if viso.readDirRoot == nil {
-		r, err := viso.fs.Open(viso.root)
-		if err != nil {
-			return nil, fmt.Errorf("open root dir: %w", err)
-		}
-
-		viso.readDirRoot = r
-	}
-
-	return viso.readDirRoot.ReadDir(count)
+	return nil, errors.ErrUnsupported
 }
 
 func (viso *VirtualISO) Stat() (fs.FileInfo, error) { return &virtualISOStat{viso}, nil }
@@ -790,11 +778,6 @@ func (viso *VirtualISO) Close() error {
 
 	var errs []error
 	viso.isClosed = true
-	if viso.readDirRoot != nil {
-		if err := viso.readDirRoot.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("close read dir root failed: %w", err))
-		}
-	}
 	for i := range viso.files {
 		if err := viso.files[i].closeOpened(); err != nil {
 			errs = append(errs, fmt.Errorf("file %s close failed: %w", viso.files[i].path, err))

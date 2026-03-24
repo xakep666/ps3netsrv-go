@@ -144,7 +144,6 @@ func (sapp *serverApp) server() error {
 				[]fs.FileOpener{
 					viso.Opener{},
 					chd.NewOpener(slog.Default()),
-					osutil.FileTimesOpener{}, // must be last because always applies
 				},
 				[]fs.FileWrapper{
 					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)

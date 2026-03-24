@@ -87,3 +87,17 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 		}
 	}
 }
+
+// FileAsType works like [errors.AsType] but for [File].
+func FileAsType[T File](f File) (T, bool) {
+	for {
+		if e, ok := f.(T); ok {
+			return e, true
+		}
+		uw, isuw := f.(interface{ Unwrap() File })
+		if !isuw {
+			return *new(T), false
+		}
+		f = uw.Unwrap()
+	}
+}

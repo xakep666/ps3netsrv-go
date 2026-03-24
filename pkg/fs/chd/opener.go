@@ -109,6 +109,10 @@ func (c *fileView) Name() string {
 	return c.openPath + isoExt
 }
 
+func (c *fileView) Unwrap() handler.File {
+	return c.File
+}
+
 func (c *fileView) Stat() (fs.FileInfo, error) {
 	fi, err := c.File.Stat()
 	if err != nil {
@@ -141,4 +145,8 @@ type fakeNameFileStat struct {
 
 func (c *fakeNameFileStat) Name() string {
 	return c.FileInfo.Name() + isoExt
+}
+
+func (c *fakeNameFileStat) Unwrap() fs.FileInfo {
+	return c.FileInfo
 }

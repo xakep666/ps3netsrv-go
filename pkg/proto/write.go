@@ -305,13 +305,27 @@ func fileInfoTimes(info fs.FileInfo) (mtime, ctime, atime uint64) {
 	atime = mtime
 	ctime = mtime
 
-	if accessTime, ok := info.(AccessTimeFileInfo); ok && !accessTime.AccessTime().IsZero() {
+	if accessTime, ok := fileInfoAsType[AccessTimeFileInfo](info); ok && !accessTime.AccessTime().IsZero() {
 		atime = uint64(accessTime.AccessTime().UTC().Unix())
 	}
 
-	if changeTime, ok := info.(ChangeTimeFileInfo); ok && !changeTime.ChangeTime().IsZero() {
+	if changeTime, ok := fileInfoAsType[ChangeTimeFileInfo](info); ok && !changeTime.ChangeTime().IsZero() {
 		ctime = uint64(changeTime.ChangeTime().UTC().Unix())
 	}
 
 	return
+}
+
+// fileInfoAsType works like [errors.AsType] but for [fs.FileInfo].
+func fileInfoAsType[T fs.FileInfo](fi fs.FileInfo) (T, bool) {
+	for {
+		if e, ok := fi.(T); ok {
+			return e, true
+		}
+		uw, isuw := fi.(interface{ Unwrap() fs.FileInfo })
+		if !isuw {
+			return *new(T), false
+		}
+		fi = uw.Unwrap()
+	}
 }

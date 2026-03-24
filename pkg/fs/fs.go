@@ -52,13 +52,17 @@ func NewFS(root SystemRoot, openers []FileOpener, wrappers []FileWrapper) *FS {
 func (fsys *FS) Open(path string) (handler.File, error) {
 	path = strings.TrimPrefix(path, string(filepath.Separator))
 	log := slog.With(slog.String("path_request", path), slog.String("fs_op", "open"))
+
+	var file handler.File
+	var err error
+openerLoop:
 	for _, opener := range fsys.openers {
 		log.Debug("Trying opener", slog.String("opener", opener.Name()))
-		file, err := opener.Open(fsys.root, path)
+		file, err = opener.Open(fsys.root, path)
 		switch {
 		case errors.Is(err, nil):
 			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
-			return file, err
+			break openerLoop
 		case errors.Is(err, fs.ErrNotExist):
 			continue
 		default:
@@ -67,22 +71,23 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 	}
 
 	// if we're here try to open raw requested path
-	log.Debug("Openers didn't succeed, trying native")
-	f, err := fsys.root.Open(path)
-	if err != nil {
-		return f, err
+	if file == nil {
+		log.Debug("Openers didn't succeed, trying native")
+		file, err = fsys.root.Open(path)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// special wrapper for directories to process ReadDir with opener's Stat
-	stat, err := f.Stat()
+	stat, err := file.Stat()
 	if err != nil {
-		return f, err
+		return nil, err
 	}
 
-	ret := handler.File(f)
 	if stat.IsDir() {
-		ret = &dirWrapper{
-			File:     f,
+		file = &dirWrapper{
+			File:     file,
 			fsys:     fsys.root,
 			openPath: path,
 			openers:  fsys.openers,
@@ -91,13 +96,13 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 
 	for _, wrapper := range fsys.wrappers {
 		log.Debug("Applying wrapper", slog.String("wrapper", wrapper.Name()))
-		ret, err = wrapper.WrapFile(fsys.root, ret)
+		file, err = wrapper.WrapFile(fsys.root, file)
 		if err != nil {
 			return nil, fmt.Errorf("wrapper %s: %w", wrapper.Name(), err)
 		}
 	}
 
-	return ret, nil
+	return file, nil
 }
 
 func (fsys *FS) Create(name string) (handler.WritableFile, error) {

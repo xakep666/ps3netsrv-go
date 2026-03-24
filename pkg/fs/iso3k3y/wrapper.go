@@ -22,6 +22,10 @@ func (kf *keyedFile) EncryptionKey() []byte {
 	return kf.key
 }
 
+func (kf *keyedFile) Unwrap() handler.File {
+	return kf.File
+}
+
 type KeyExtractionFileWrapper struct{}
 
 func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
@@ -65,7 +69,7 @@ type FileWrapper struct{}
 
 func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
 	// if it's already a 3k3y iso, just pass
-	if _, is3k3y := f.(*ISO3k3y); is3k3y {
+	if _, is3k3y := handler.FileAsType[*ISO3k3y](f); is3k3y {
 		return f, nil
 	}
 
