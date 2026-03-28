@@ -125,6 +125,8 @@ func (vdh VolumeDescriptorHeader) Encode(enc *Encoder) {
 // PrimaryVolumeDescriptorBody represents the data in bytes 7-2047
 // of a Primary Volume Descriptor as defined in ECMA-119 8.4
 type PrimaryVolumeDescriptorBody struct {
+	StringPadding byte // character used for strings padding
+
 	SystemIdentifier              StringA
 	VolumeIdentifier              StringD
 	VolumeSpaceSize               SizeSectors
@@ -137,7 +139,7 @@ type PrimaryVolumeDescriptorBody struct {
 	OptTypeLPathTableLoc          SizeSectors
 	TypeMPathTableLoc             SizeSectors
 	OptTypeMPathTableLoc          SizeSectors
-	RootDirectoryEntry            *DirectoryEntry
+	RootDirectoryEntry            *FixedDirectoryEntry
 	VolumeSetIdentifier           StringD
 	PublisherIdentifier           StringA
 	DataPreparerIdentifier        StringA
@@ -153,9 +155,8 @@ type PrimaryVolumeDescriptorBody struct {
 	ApplicationUsed               []byte
 }
 
-// DirectoryEntry contains data from a Directory Descriptor
-// as described by ECMA-119 9.1
-type DirectoryEntry struct {
+// FixedDirectoryEntry is embedded into PrimaryVolumeDescriptorBody
+type FixedDirectoryEntry struct {
 	ExtendedAttributeRecordLength byte
 	ExtentLocation                SizeSectors
 	ExtentLength                  SizeBytes
@@ -165,22 +166,21 @@ type DirectoryEntry struct {
 	InterleaveSkip                byte
 	VolumeSequenceNumber          uint16
 	Identifier                    StringD1
-	SystemUse                     []byte
 }
 
-func (de DirectoryEntry) Size() SizeBytes {
+func (de FixedDirectoryEntry) Size() SizeBytes {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
-	totalLen := 33 + identifierLen + idPaddingLen + len(de.SystemUse)
+	totalLen := 33 + identifierLen + idPaddingLen
 
 	return SizeBytes(totalLen)
 }
 
-func (de DirectoryEntry) Encode(enc *Encoder) {
+func (de FixedDirectoryEntry) addBytes(enc *Encoder) (startPos SizeBytes) {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
 
-	startPos := enc.Size()
+	startPos = enc.Size()
 	enc.AppendByte(0) // reserved for size
 	enc.AppendByte(de.ExtendedAttributeRecordLength)
 	enc.AppendUint32LSBMSB(uint32(de.ExtentLocation))
@@ -195,8 +195,40 @@ func (de DirectoryEntry) Encode(enc *Encoder) {
 	if idPaddingLen > 0 {
 		enc.AppendByte(0)
 	}
-	enc.AppendBytes(de.SystemUse)
+	return startPos
+}
 
+func (de FixedDirectoryEntry) Encode(enc *Encoder) {
+	startPos := de.addBytes(enc)
+	// ensure that size method works correctly
+	if de.Size() != enc.Size()-startPos {
+		panic("directory entry size mismatch")
+	}
+
+	// set size
+	enc.SetByteAt(byte(enc.Size()-startPos), startPos)
+}
+
+// DirectoryEntry contains data from a Directory Descriptor
+// as described by ECMA-119 9.1
+type DirectoryEntry struct {
+	FixedDirectoryEntry
+	SystemUse []byte
+}
+
+func (de DirectoryEntry) Size() SizeBytes {
+	return de.FixedDirectoryEntry.Size() + SizeBytes(len(de.SystemUse))
+}
+
+func (de DirectoryEntry) Encode(enc *Encoder) {
+	// if entry doesn't fit in sector, begin new sector
+	if encSize := enc.Size(); de.Size() > encSize.Sectors().Bytes()-encSize {
+		enc.PadLastSector()
+	}
+
+	startPos := de.FixedDirectoryEntry.addBytes(enc)
+
+	enc.AppendBytes(de.SystemUse)
 	// ensure that size method works correctly
 	if de.Size() != enc.Size()-startPos {
 		panic("directory entry size mismatch")
@@ -247,8 +279,8 @@ func (e PathTableEntry) EncodeOrdered(enc *Encoder, order binary.AppendByteOrder
 
 func (pvd PrimaryVolumeDescriptorBody) Encode(enc *Encoder) {
 	enc.AppendByte(0) // reserved
-	enc.AppendStringA(pvd.SystemIdentifier, 32)
-	enc.AppendStringD(pvd.VolumeIdentifier, 32)
+	enc.AppendString(string(pvd.SystemIdentifier), 32, pvd.StringPadding)
+	enc.AppendString(string(pvd.VolumeIdentifier), 32, pvd.StringPadding)
 	enc.AppendZeroes(8) // reserved
 	enc.AppendUint32LSBMSB(uint32(pvd.VolumeSpaceSize))
 	enc.AppendString(pvd.EscapeSequences, 32, 0) // for joliet
@@ -264,13 +296,13 @@ func (pvd PrimaryVolumeDescriptorBody) Encode(enc *Encoder) {
 
 	enc.AppendEncodable(pvd.RootDirectoryEntry, 34)
 
-	enc.AppendStringD(pvd.VolumeSetIdentifier, 128)
-	enc.AppendStringA(pvd.PublisherIdentifier, 128)
-	enc.AppendStringA(pvd.DataPreparerIdentifier, 128)
-	enc.AppendStringA(pvd.ApplicationIdentifier, 128)
-	enc.AppendStringD(pvd.CopyrightFileIdentifier, 37)
-	enc.AppendStringD(pvd.AbstractFileIdentifier, 37)
-	enc.AppendStringD(pvd.BibliographicFileIdentifier, 37)
+	enc.AppendString(string(pvd.VolumeSetIdentifier), 128, pvd.StringPadding)
+	enc.AppendString(string(pvd.PublisherIdentifier), 128, pvd.StringPadding)
+	enc.AppendString(string(pvd.DataPreparerIdentifier), 128, pvd.StringPadding)
+	enc.AppendString(string(pvd.ApplicationIdentifier), 128, pvd.StringPadding)
+	enc.AppendString(string(pvd.CopyrightFileIdentifier), 37, pvd.StringPadding)
+	enc.AppendString(string(pvd.AbstractFileIdentifier), 37, pvd.StringPadding)
+	enc.AppendString(string(pvd.BibliographicFileIdentifier), 37, pvd.StringPadding)
 
 	pvd.VolumeCreationDateAndTime.Encode(enc)
 	pvd.VolumeModificationDateAndTime.Encode(enc)
