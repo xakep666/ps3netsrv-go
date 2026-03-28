@@ -99,7 +99,7 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 		oclog.DebugContext(ctx, "Received opcode")
 
 		if err := s.handleCommand(opCode, ctx); err != nil {
-			oclog.ErrorContext(ctx, "Command handler failed")
+			oclog.ErrorContext(ctx, "Command handler failed", logutil.ErrorAttr(err))
 			return
 		}
 	}
