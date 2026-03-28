@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/docker/go-units"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 
 	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/client"
@@ -160,27 +162,265 @@ func (c *clientDirSizeCmd) Run(client *client.Client) error {
 	return err
 }
 
-type clientApp struct {
-	Address    string `help:"Target server address" required:""`
-	BufferSize int64  `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k"`
-
-	StatCmd    clientStatCmd    `cmd:"" name:"stat" help:"Display single file/dir info"`
-	ReadDirCmd clientReadDirCmd `cmd:"" name:"readdir" help:"Read directory entries"`
-	DirSizeCmd clientDirSizeCmd `cmd:"" name:"dirsize" help:"Get directory size"`
+type clientMkdirCmd struct {
+	Path string `arg:"" help:"Path to target directory on server"`
 }
 
-func (c *clientApp) ProvideClient() (*client.Client, error) {
+func (c *clientMkdirCmd) Run(client *client.Client) error {
 	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer sigDone()
 
-	var cop *ioutil.Copier
-	if c.BufferSize > 0 {
-		cop = ioutil.NewPooledCopier(c.BufferSize)
-	} else {
-		cop = ioutil.NewCopier()
+	return client.MkDir(sigCtx, c.Path)
+}
+
+type clientRmdirCmd struct {
+	Path string `arg:"" help:"Path to target directory on server"`
+}
+
+func (c *clientRmdirCmd) Run(client *client.Client) error {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	return client.RmDir(sigCtx, c.Path)
+}
+
+type clientRmCmd struct {
+	Path string `arg:"" help:"Path to target file on server"`
+}
+
+func (c *clientRmCmd) Run(client *client.Client) error {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	return client.DeleteFile(sigCtx, c.Path)
+}
+
+type clientReadCmd struct {
+	Path   string             `arg:"" help:"Path to file on server"`
+	Target targetFileWithMode `embed:""`
+
+	NonCritical bool   `help:"Use ReadFile command instead of ReadFileCritical command"`
+	BlockSize   uint32 `help:"Size of single file block (chunk) read from server in one request" type:"binsize" default:"64k"`
+	Seek        int    `help:"Skip N blocks before start reading" placeholder:"N"`
+	Count       int    `help:"Read N blocks. Read until EOF if not specified." placeholder:"N"`
+}
+
+func (c *clientReadCmd) Run(client *client.Client) error {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	openResult, err := client.OpenFile(sigCtx, c.Path)
+	if err != nil {
+		return err
 	}
 
-	return client.NewClient(sigCtx, cop, c.Address)
+	defer func() {
+		_ = client.CloseFile(sigCtx)
+	}()
+
+	offset := min(int64(c.Seek)*int64(c.BlockSize), 0)
+	count := min(int64(c.Count)*int64(c.BlockSize), 0)
+	if offset+count > openResult.FileSize {
+		return fmt.Errorf("blocksize(%d)*(seek(%d)+count(%d)) are greater than file size (%d)",
+			c.BlockSize, c.Seek, c.Count, openResult.FileSize,
+		)
+	}
+
+	count = max(count, openResult.FileSize-offset)
+
+	targetFile, err := c.Target.open()
+	if err != nil {
+		return err
+	}
+
+	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(count,
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			// EWMA decorators doesn't work with proxy writer now
+			decor.AverageETA(decor.ET_STYLE_GO),
+			decor.Name(" ] "),
+			decor.AverageSpeed(decor.SizeB1024(0), "% .2f"),
+		),
+	)
+
+	fmt.Fprintf(os.Stderr, "Reading file %q from server\n", c.Path)
+	target := bar.ProxyWriter(targetFile)
+	for count > 0 {
+		readBytes := min(c.BlockSize, uint32(count))
+		if c.NonCritical {
+			err = client.ReadFile(sigCtx, readBytes, uint64(offset), target)
+		} else {
+			err = client.ReadFileCritical(sigCtx, readBytes, uint64(offset), target)
+		}
+		if err != nil {
+			return err
+		}
+
+		count -= int64(readBytes)
+		offset += int64(readBytes)
+	}
+
+	p.Wait()
+
+	return target.Close()
+}
+
+type clientReadCd2048Cmd struct {
+	Path   string             `arg:"" help:"Path to file on server"`
+	Target targetFileWithMode `embed:""`
+
+	BlockSize uint32 `help:"Amount of sectors per single read request" default:"1"`
+	Seek      uint32 `help:"Skip N sectors before start reading" placeholder:"N"`
+	Count     uint32 `help:"Read N sectors. Read until EOF if not specified." placeholder:"N" required:"true"`
+}
+
+func (c *clientReadCd2048Cmd) Run(client *client.Client) error {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	openResult, err := client.OpenFile(sigCtx, c.Path)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = client.CloseFile(sigCtx)
+	}()
+
+	offset := c.Seek
+	count := c.Count
+
+	const sectorSize = 2048
+	if sectorSize*int64(offset+count) > openResult.FileSize { // not precise validation
+		return fmt.Errorf("blocksize(%d)*(seek(%d)+count(%d)) are greater than file size (%d)",
+			sectorSize, c.Seek, c.Count, openResult.FileSize,
+		)
+	}
+
+	targetFile, err := c.Target.open()
+	if err != nil {
+		return err
+	}
+
+	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(int64(count)*sectorSize,
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			// EWMA decorators doesn't work with proxy writer now
+			decor.AverageETA(decor.ET_STYLE_GO),
+			decor.Name(" ] "),
+			decor.AverageSpeed(decor.SizeB1024(0), "% .2f"),
+		),
+	)
+
+	target := bar.ProxyWriter(targetFile)
+	fmt.Fprintf(os.Stderr, "Reading file %q from server in cd-2048 mode\n", c.Path)
+	for count > 0 {
+		err := client.ReadCD2048Critical(sigCtx, c.BlockSize, offset, target)
+		if err != nil {
+			return err
+		}
+
+		count -= c.BlockSize
+		offset += c.BlockSize
+	}
+
+	p.Wait()
+
+	return target.Close()
+}
+
+type clientWriteCmd struct {
+	Source     *os.File `arg:"" help:"Local file to send"`
+	TargetPath string   `arg:"" help:"Path on server to place a file"`
+
+	BlockSize uint32 `help:"Size of single file block (chunk) sent to server in one request" type:"binsize" default:"64k"`
+	Seek      int    `help:"Skip N blocks before start reading" placeholder:"N"`
+	Count     int    `help:"Read N blocks. Read until EOF if not specified." placeholder:"N"`
+}
+
+func (c *clientWriteCmd) Run(client *client.Client) error {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	fi, err := c.Source.Stat()
+	if err != nil {
+		return err
+	}
+
+	offset := min(int64(c.Seek)*int64(c.BlockSize), 0)
+	count := min(int64(c.Count)*int64(c.BlockSize), 0)
+	if offset+count > fi.Size() {
+		return fmt.Errorf("blocksize(%d)*(seek(%d)+count(%d)) are greater than file size (%d)",
+			c.BlockSize, c.Seek, c.Count, fi.Size(),
+		)
+	}
+
+	count = max(count, fi.Size()-offset)
+
+	if offset > 0 {
+		_, err = c.Source.Seek(offset, io.SeekStart)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err = client.CreateFile(sigCtx, c.TargetPath); err != nil {
+		return err
+	}
+
+	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(count,
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.Name(" ] "),
+			decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 30),
+		),
+	)
+
+	fmt.Fprintf(os.Stderr, "Sending file %q\n", c.Source.Name())
+	err = client.WriteFile(sigCtx, c.BlockSize, bar.ProxyReader(io.LimitReader(c.Source, count)))
+	if err != nil {
+		return err
+	}
+
+	p.Wait()
+	return nil
+}
+
+type targetFileWithMode struct {
+	TargetPath string `arg:"" help:"Path to target (local) file, '-' for stdout"`
+	TargetMode string `enum:"exclude,truncate,append" help:"Target file open mode: exclude - command fails if file already exists, truncate - truncates already existing file, append - appends to already existing file" default:"exclude"`
+}
+
+func (t *targetFileWithMode) open() (*os.File, error) {
+	if t.TargetPath == "-" {
+		return os.Stdout, nil
+	}
+	switch t.TargetMode {
+	case "exclude":
+		return os.OpenFile(t.TargetPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o644)
+	case "truncate":
+		return os.OpenFile(t.TargetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	case "append":
+		return os.OpenFile(t.TargetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	default:
+		return nil, fmt.Errorf("unknown mode %q", t.TargetPath)
+	}
 }
 
 func dirEntriesV1(ctx context.Context, c *client.Client) (iter.Seq[client.DirEntry], func() error) {
@@ -223,4 +463,33 @@ func dirEntriesV2(ctx context.Context, c *client.Client) (iter.Seq[client.DirEnt
 		}, func() error {
 			return *errp
 		}
+}
+
+type clientApp struct {
+	Address    string `help:"Target server address" required:""`
+	BufferSize int64  `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k"`
+
+	StatCmd       clientStatCmd       `cmd:"" name:"stat" help:"Display single file/dir info"`
+	ReadDirCmd    clientReadDirCmd    `cmd:"" name:"readdir" help:"Read directory entries"`
+	DirSizeCmd    clientDirSizeCmd    `cmd:"" name:"dirsize" help:"Get directory size"`
+	MkdirCmd      clientMkdirCmd      `cmd:"" name:"mkdir" help:"Create a directory"`
+	RmdirCmd      clientRmdirCmd      `cmd:"" name:"rmdir" help:"Remove a directory"`
+	RmCmd         clientRmCmd         `cmd:"" name:"rm" help:"Remove a file"`
+	ReadCmd       clientReadCmd       `cmd:"" name:"read" help:"Copy file from server to local machine"`
+	ReadCd2048Cmd clientReadCd2048Cmd `cmd:"" name:"read-cd2048" help:"Copy file from server to local machine using ReadCD2048 command (PSX mode)"`
+	WriteCmd      clientWriteCmd      `cmd:"" name:"write" help:"Copy local file to server"`
+}
+
+func (c *clientApp) ProvideClient() (*client.Client, error) {
+	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer sigDone()
+
+	var cop *ioutil.Copier
+	if c.BufferSize > 0 {
+		cop = ioutil.NewPooledCopier(c.BufferSize)
+	} else {
+		cop = ioutil.NewCopier()
+	}
+
+	return client.NewClient(sigCtx, cop, c.Address)
 }

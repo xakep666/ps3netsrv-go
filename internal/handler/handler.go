@@ -310,12 +310,12 @@ func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 
 	// path is a directory -> closing file, just return
 	stat, err := h.Fs.Stat(filepath.FromSlash(path))
-	if err != nil {
+	if err == nil && stat.IsDir() {
+		return nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 		return err
-	}
-	if stat.IsDir() {
-		return nil
 	}
 
 	f, err := h.Fs.Create(filepath.FromSlash(path))

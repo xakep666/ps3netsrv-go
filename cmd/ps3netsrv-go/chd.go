@@ -9,11 +9,15 @@ import (
 	"log/slog"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/docker/go-units"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
+
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/chd"
 )
 
@@ -115,10 +119,27 @@ func (c *chdDecompressCmd) Run() error {
 		return err
 	}
 
+	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	builder := mpb.BarStyle().Rbound("|")
+	opts := []mpb.BarOption{
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.Name(" ] "),
+			decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 30),
+		),
+	}
+
 	if !f.Header.IsCDCodesOnly() || c.RawCdSectors {
-		fmt.Printf("Decompressing CHD image %s ...\n", c.Image.Name())
-		_, err = io.Copy(c.Output, f)
-		return err
+		bar := p.New(int64(f.Header.LogicalBytes), builder, opts...)
+		_, err = io.Copy(c.Output, bar.ProxyReader(f))
+		if err != nil {
+			return err
+		}
+		p.Wait()
+		return nil
 	}
 
 	cdFile, err := f.AsCD()
@@ -126,9 +147,14 @@ func (c *chdDecompressCmd) Run() error {
 		return err
 	}
 
-	fmt.Printf("Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
-	_, err = io.Copy(c.Output, cdFile)
-	return err
+	fmt.Fprintf(os.Stderr, "Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
+	bar := p.New(cdFile.Size, builder, opts...)
+	_, err = io.Copy(c.Output, bar.ProxyReader(cdFile))
+	if err != nil {
+		return err
+	}
+	p.Wait()
+	return nil
 }
 
 type chdApp struct {

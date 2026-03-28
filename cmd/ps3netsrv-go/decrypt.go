@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
@@ -28,10 +32,32 @@ func (c *decrypt3k3yCmd) Run() error {
 		return err
 	}
 
-	fmt.Printf("Decrypting 3k3y image %s ...\n", c.Image.Name())
+	fi, err := imageWrapped.Stat()
+	if err != nil {
+		return err
+	}
 
-	_, err = io.Copy(c.Output, imageWrapped)
-	return err
+	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(fi.Size(),
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.Name(" ] "),
+			decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 30),
+		),
+	)
+
+	_, err = io.Copy(c.Output, bar.ProxyReader(imageWrapped))
+	if err != nil {
+		return err
+	}
+	p.Wait()
+
+	return nil
 }
 
 type decryptRedumpCmd struct {
@@ -51,10 +77,32 @@ func (c *decryptRedumpCmd) Run() error {
 		return err
 	}
 
-	fmt.Printf("Decrypting Redump image %s ...\n", c.Image.Name())
+	fi, err := imageWrapped.Stat()
+	if err != nil {
+		return err
+	}
 
-	_, err = io.Copy(c.Output, imageWrapped)
-	return err
+	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(fi.Size(),
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.Name(" ] "),
+			decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 30),
+		),
+	)
+
+	_, err = io.Copy(c.Output, bar.ProxyReader(imageWrapped))
+	if err != nil {
+		return err
+	}
+	p.Wait()
+
+	return nil
 }
 
 type decryptApp struct {

@@ -382,6 +382,9 @@ func (c *Client) WriteFile(ctx context.Context, chunkSize uint32, from io.Reader
 		if err != nil {
 			return fmt.Errorf("read from reader: %w", err)
 		}
+		if n == 0 {
+			return nil
+		}
 
 		err = c.writeRequest(ctx,
 			proto.CmdWriteFile,
