@@ -10,8 +10,12 @@ permissions:
   packages: write
 
 jobs:
+  build-libchdr:
+    uses: ./.github/workflows/libchdr.yml
   release:
     runs-on: ubuntu-latest
+    needs:
+      - build-libchdr
     steps:
       - uses: actions/checkout@v6
         with:
