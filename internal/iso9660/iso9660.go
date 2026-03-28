@@ -137,7 +137,7 @@ type PrimaryVolumeDescriptorBody struct {
 	OptTypeLPathTableLoc          SizeSectors
 	TypeMPathTableLoc             SizeSectors
 	OptTypeMPathTableLoc          SizeSectors
-	RootDirectoryEntry            *DirectoryEntry
+	RootDirectoryEntry            *FixedDirectoryEntry
 	VolumeSetIdentifier           StringD
 	PublisherIdentifier           StringA
 	DataPreparerIdentifier        StringA
@@ -153,9 +153,8 @@ type PrimaryVolumeDescriptorBody struct {
 	ApplicationUsed               []byte
 }
 
-// DirectoryEntry contains data from a Directory Descriptor
-// as described by ECMA-119 9.1
-type DirectoryEntry struct {
+// FixedDirectoryEntry is embedded into PrimaryVolumeDescriptorBody
+type FixedDirectoryEntry struct {
 	ExtendedAttributeRecordLength byte
 	ExtentLocation                SizeSectors
 	ExtentLength                  SizeBytes
@@ -165,22 +164,21 @@ type DirectoryEntry struct {
 	InterleaveSkip                byte
 	VolumeSequenceNumber          uint16
 	Identifier                    StringD1
-	SystemUse                     []byte
 }
 
-func (de DirectoryEntry) Size() SizeBytes {
+func (de FixedDirectoryEntry) Size() SizeBytes {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
-	totalLen := 33 + identifierLen + idPaddingLen + len(de.SystemUse)
+	totalLen := 33 + identifierLen + idPaddingLen
 
 	return SizeBytes(totalLen)
 }
 
-func (de DirectoryEntry) Encode(enc *Encoder) {
+func (de FixedDirectoryEntry) addBytes(enc *Encoder) (startPos SizeBytes) {
 	identifierLen := len(de.Identifier)
 	idPaddingLen := (identifierLen + 1) % 2
 
-	startPos := enc.Size()
+	startPos = enc.Size()
 	enc.AppendByte(0) // reserved for size
 	enc.AppendByte(de.ExtendedAttributeRecordLength)
 	enc.AppendUint32LSBMSB(uint32(de.ExtentLocation))
@@ -195,8 +193,40 @@ func (de DirectoryEntry) Encode(enc *Encoder) {
 	if idPaddingLen > 0 {
 		enc.AppendByte(0)
 	}
-	enc.AppendBytes(de.SystemUse)
+	return startPos
+}
 
+func (de FixedDirectoryEntry) Encode(enc *Encoder) {
+	startPos := de.addBytes(enc)
+	// ensure that size method works correctly
+	if de.Size() != enc.Size()-startPos {
+		panic("directory entry size mismatch")
+	}
+
+	// set size
+	enc.SetByteAt(byte(enc.Size()-startPos), startPos)
+}
+
+// DirectoryEntry contains data from a Directory Descriptor
+// as described by ECMA-119 9.1
+type DirectoryEntry struct {
+	FixedDirectoryEntry
+	SystemUse []byte
+}
+
+func (de DirectoryEntry) Size() SizeBytes {
+	return de.FixedDirectoryEntry.Size() + SizeBytes(len(de.SystemUse))
+}
+
+func (de DirectoryEntry) Encode(enc *Encoder) {
+	// if entry doesn't fit in sector, begin new sector
+	if encSize := enc.Size(); de.Size() > encSize.Sectors().Bytes()-encSize {
+		enc.PadLastSector()
+	}
+
+	startPos := de.FixedDirectoryEntry.addBytes(enc)
+
+	enc.AppendBytes(de.SystemUse)
 	// ensure that size method works correctly
 	if de.Size() != enc.Size()-startPos {
 		panic("directory entry size mismatch")

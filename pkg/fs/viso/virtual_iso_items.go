@@ -19,6 +19,8 @@ const (
 	currentDir = "."
 )
 
+var dirEntryPad = make([]byte, 6)
+
 type directoryFile struct {
 	path string // relative to base fs
 	name string
