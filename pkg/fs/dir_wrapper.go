@@ -19,6 +19,10 @@ type dirWrapper struct {
 	openers  []FileOpener
 }
 
+func (dw *dirWrapper) Name() string {
+	return dw.openPath
+}
+
 func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
 	items, err := dw.File.ReadDir(n)
 	if err != nil {

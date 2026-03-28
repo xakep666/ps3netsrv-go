@@ -16,6 +16,7 @@ will run without any external library on target system.
 * Write protection. Enabled by default, use flag `--allow-write` or corresponding parameter.
 * TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
 * [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
+* Built-in client: see `ps3netsrv-go client --help`
 
 ### Supported ✅
 

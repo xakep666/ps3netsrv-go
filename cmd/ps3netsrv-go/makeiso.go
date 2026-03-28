@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
@@ -23,6 +27,29 @@ func (a *makeISOApp) Run() error {
 
 	defer viso.Close()
 
-	_, err = io.Copy(a.Target, viso)
-	return err
+	fi, err := viso.Stat()
+	if err != nil {
+		return err
+	}
+
+	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+
+	bar := p.New(fi.Size(),
+		mpb.BarStyle().Rbound("|"),
+		mpb.PrependDecorators(
+			decor.Counters(decor.SizeB1024(0), "% .2f / % .2f"),
+		),
+		mpb.AppendDecorators(
+			decor.EwmaETA(decor.ET_STYLE_GO, 30),
+			decor.Name(" ] "),
+			decor.EwmaSpeed(decor.SizeB1024(0), "% .2f", 30),
+		),
+	)
+
+	_, err = io.Copy(a.Target, bar.ProxyReader(viso))
+	if err != nil {
+		return err
+	}
+	p.Wait()
+	return nil
 }

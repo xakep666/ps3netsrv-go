@@ -28,6 +28,7 @@ type app struct {
 	DecryptApp decryptApp `cmd:"" name:"decrypt" help:"Decrypt encrypted images."`
 	MakeISOApp makeISOApp `cmd:"" name:"make-iso" help:"Make ISO image from directory."`
 	CHDApp     chdApp     `cmd:"" name:"chd" help:"Helpers for CHD images."`
+	ClientApp  clientApp  `cmd:"" name:"client" help:"Client for netiso protocol"`
 
 	Version kong.VersionFlag `help:"Show application version info."`
 	Config  kong.ConfigFlag  `help:"Load configuration from file." env:"PS3NETSRV_CONFIG_FILE"`

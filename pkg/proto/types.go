@@ -21,7 +21,7 @@ const (
 	// Used by PSX mode (PS1 emulation).
 	CmdReadCD2048Critical
 
-	// CmdReadFile closes the active wo file (if any) and opens+truncates or creates a new one.
+	// CmdReadFile reads current open ro file.
 	CmdReadFile
 
 	// CmdCreateFile Closes the active wo file (if any) and opens+truncates or creates a new one.

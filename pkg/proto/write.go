@@ -290,6 +290,7 @@ func (w *Writer) sendResult(data any) error {
 		if err != nil {
 			return fmt.Errorf("io.WriteString failed: %w", err)
 		}
+		return nil
 	}
 
 	err := binary.Write(w.Writer, binary.BigEndian, data)
