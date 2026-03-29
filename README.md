@@ -24,7 +24,7 @@ will run without any external library on target system.
 * File streaming including game images in `PS3ISO`
 * PSX images streaming
 * Client addresses whitelist, capping amount of connections
-* Virtual ISO: games in directory format (residing in `GAMES`). Note: https://github.com/xakep666/ps3netsrv-go/issues/28
+* Virtual ISO: games in directory format (residing in `GAMES`).
 * 3k3y/Redump images: if iso path is `<root>/PS3ISO/game.iso` than dedicated key expected at `<root>/PS3ISO/game.dkey` or at `<root>/REDKEY/game.dkey`
 
 ### Unsupported ❌
