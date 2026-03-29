@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
-	"unsafe"
+	"strings"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
@@ -40,19 +40,24 @@ func (dw *dirWrapper) modifyEntries(items []fs.DirEntry) error {
 	log := slog.With(slog.String("request_path", dw.openPath), slog.String("op", "readdir"))
 
 	// to reduce allocations during full path generation
-	sb := append([]byte(dw.openPath), filepath.Separator)
-	fileNameStart := len(sb)
+	var sb strings.Builder
 
 itemsLoop:
 	for i, item := range items {
-		for j, opener := range dw.openers {
-			sb = append(sb[:fileNameStart], item.Name()...)
+		itemName := item.Name()
+		sb.Reset()
+		sb.Grow(len(dw.openPath) + 1 + len(itemName))
+		sb.WriteString(dw.openPath)
+		sb.WriteByte(filepath.Separator)
+		sb.WriteString(itemName)
+		openPath := sb.String()
 
-			log.Debug("Trying opener", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
-			st, err := opener.Stat(dw.fsys, unsafe.String(unsafe.SliceData(sb), len(sb)))
+		for j, opener := range dw.openers {
+			log.Debug("Trying opener", slog.String("opener", opener.Name()), slog.String("path", openPath))
+			st, err := opener.Stat(dw.fsys, openPath)
 			switch {
 			case errors.Is(err, nil):
-				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path_suffix", item.Name()))
+				log.Debug("Opener succeded", slog.String("opener", opener.Name()), slog.String("path", openPath))
 				items[i] = fs.FileInfoToDirEntry(st)
 				continue itemsLoop
 			case errors.Is(err, fs.ErrNotExist):
