@@ -8,7 +8,8 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
-	"runtime"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -237,6 +238,10 @@ func (viso *VirtualISO) scanDirectory() error {
 			return fmt.Errorf("dir %s items get failed: %w", path, err)
 		}
 
+		slices.SortFunc(items, func(a, b fs.DirEntry) int {
+			return strings.Compare(a.Name(), b.Name())
+		})
+
 		for _, item := range items {
 			fullPath := filepath.Join(path, item.Name())
 			itemStat, err := viso.fs.Stat(fullPath)
@@ -266,8 +271,8 @@ func (viso *VirtualISO) scanDirectory() error {
 	}
 
 	for len(queue) > 0 {
-		dir := queue[len(queue)-1]
-		queue = queue[:len(queue)-1]
+		dir := queue[0]
+		queue = queue[1:]
 
 		if err := processDirectory(dir); err != nil {
 			return err
@@ -282,26 +287,34 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 
 	// '.' entry
 	dotEntry := iso9660.DirectoryEntry{
-		FileFlags:            iso9660.DirFlagDir,
-		ExtentLocation:       viso.rootDir.size(joliet).Sectors(),
-		RecordingDateTime:    iso9660.RecordingTimestamp(item.modTime),
-		VolumeSequenceNumber: 1,
-		Identifier:           dotEntryIdentifier,
+		FixedDirectoryEntry: iso9660.FixedDirectoryEntry{
+			FileFlags:            iso9660.DirFlagDir,
+			ExtentLocation:       viso.rootDir.size(joliet).Sectors(),
+			RecordingDateTime:    iso9660.RecordingTimestamp(item.modTime.UTC()),
+			VolumeSequenceNumber: 1,
+			Identifier:           dotEntryIdentifier,
+		},
+		SystemUse: dirEntryPad,
 	}
 
 	// '..' entry
 	dotDotEntry := iso9660.DirectoryEntry{
-		FileFlags:            iso9660.DirFlagDir,
-		VolumeSequenceNumber: 1,
-		Identifier:           dotDotEntryIdentifier,
+		FixedDirectoryEntry: iso9660.FixedDirectoryEntry{
+			FileFlags:            iso9660.DirFlagDir,
+			VolumeSequenceNumber: 1,
+			Identifier:           dotDotEntryIdentifier,
+		},
+		SystemUse: dirEntryPad,
 	}
 
 	parent := viso.rootDir.parent(*item)
 	if parent != nil {
 		// link parent directory
-		dotDotEntry.RecordingDateTime = iso9660.RecordingTimestamp(parent.modTime)
+		dotDotEntry.RecordingDateTime = iso9660.RecordingTimestamp(parent.modTime.UTC())
+		dotDotEntry.ExtentLength = parent.dirEntry[0].ExtentLength
 		dotDotEntry.ExtentLocation = parent.dirEntry[0].ExtentLocation
 		if joliet {
+			dotDotEntry.ExtentLength = parent.dirEntryJoliet[0].ExtentLength
 			dotDotEntry.ExtentLocation = parent.dirEntryJoliet[0].ExtentLocation
 		}
 	} else {
@@ -331,10 +344,13 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 
 		for i := range parts {
 			entry := iso9660.DirectoryEntry{
-				Identifier:           makeIdentifier(fileItem.name, joliet),
-				RecordingDateTime:    iso9660.RecordingTimestamp(fileItem.modTime),
-				VolumeSequenceNumber: 1,
-				ExtentLocation:       lba,
+				FixedDirectoryEntry: iso9660.FixedDirectoryEntry{
+					Identifier:           makeIdentifier(fileItem.name+";1", joliet),
+					RecordingDateTime:    iso9660.RecordingTimestamp(fileItem.modTime.UTC()),
+					VolumeSequenceNumber: 1,
+					ExtentLocation:       lba,
+				},
+				SystemUse: dirEntryPad,
 			}
 
 			switch {
@@ -369,10 +385,13 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 		}
 
 		entry := iso9660.DirectoryEntry{
-			FileFlags:            iso9660.DirFlagDir,
-			VolumeSequenceNumber: 1,
-			RecordingDateTime:    iso9660.RecordingTimestamp(dirItem.modTime),
-			Identifier:           makeIdentifier(dirItem.name, joliet),
+			FixedDirectoryEntry: iso9660.FixedDirectoryEntry{
+				FileFlags:            iso9660.DirFlagDir,
+				VolumeSequenceNumber: 1,
+				RecordingDateTime:    iso9660.RecordingTimestamp(dirItem.modTime.UTC()),
+				Identifier:           makeIdentifier(dirItem.name, joliet),
+			},
+			SystemUse: dirEntryPad,
 		}
 
 		if joliet {
@@ -486,21 +505,19 @@ func (viso *VirtualISO) makeVolumeDescriptors(volumeName string) {
 			Version:    1,
 		},
 		Primary: &iso9660.PrimaryVolumeDescriptorBody{
-			SystemIdentifier:              iso9660.MangleStringA(runtime.GOOS, false),
-			VolumeIdentifier:              iso9660.MangleStringD(volumeName, false),
-			VolumeSpaceSize:               viso.volumeSizeSectors,
-			VolumeSetSize:                 1,
-			VolumeSequenceNumber:          1,
-			LogicalBlockSize:              iso9660.SectorSize,
-			PathTableSize:                 viso.pathTable.size(),
-			TypeLPathTableLoc:             pathTableLLBA,
-			TypeMPathTableLoc:             pathTableMLBA,
-			ApplicationIdentifier:         "ps3netsrv",
-			VolumeSetIdentifier:           iso9660.MangleStringD(volumeName, false),
-			VolumeCreationDateAndTime:     iso9660.VolumeDescriptorTimestampFromTime(now),
-			VolumeModificationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
-			FileStructureVersion:          1,
-			RootDirectoryEntry:            &viso.rootDir[0].dirEntry[0],
+			StringPadding:             ' ',
+			VolumeIdentifier:          iso9660.MangleStringD(volumeName, false),
+			VolumeSpaceSize:           viso.volumeSizeSectors,
+			VolumeSetSize:             1,
+			VolumeSequenceNumber:      1,
+			LogicalBlockSize:          iso9660.SectorSize,
+			PathTableSize:             viso.pathTable.size(),
+			TypeLPathTableLoc:         pathTableLLBA,
+			TypeMPathTableLoc:         pathTableMLBA,
+			VolumeSetIdentifier:       iso9660.MangleStringD(volumeName, false),
+			VolumeCreationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
+			FileStructureVersion:      1,
+			RootDirectoryEntry:        &viso.rootDir[0].dirEntry[0].FixedDirectoryEntry,
 		},
 	}
 
@@ -511,22 +528,20 @@ func (viso *VirtualISO) makeVolumeDescriptors(volumeName string) {
 			Version:    1,
 		},
 		Primary: &iso9660.PrimaryVolumeDescriptorBody{
-			SystemIdentifier:              iso9660.MangleStringA(runtime.GOOS, true),
-			VolumeIdentifier:              iso9660.MangleStringD(volumeName, true),
-			VolumeSpaceSize:               viso.volumeSizeSectors,
-			EscapeSequences:               "%/@",
-			VolumeSetSize:                 1,
-			VolumeSequenceNumber:          1,
-			LogicalBlockSize:              iso9660.SectorSize,
-			PathTableSize:                 viso.pathTableJoliet.size(),
-			TypeLPathTableLoc:             pathTableJolietLLBA,
-			TypeMPathTableLoc:             pathTableJolietMLBA,
-			ApplicationIdentifier:         "ps3netsrv",
-			VolumeSetIdentifier:           iso9660.MangleStringD(volumeName, true),
-			VolumeCreationDateAndTime:     iso9660.VolumeDescriptorTimestampFromTime(now),
-			VolumeModificationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
-			FileStructureVersion:          1,
-			RootDirectoryEntry:            &viso.rootDir[0].dirEntryJoliet[0],
+			StringPadding:             0,
+			VolumeIdentifier:          iso9660.MangleStringD(volumeName, true),
+			VolumeSpaceSize:           viso.volumeSizeSectors,
+			EscapeSequences:           "%/@",
+			VolumeSetSize:             1,
+			VolumeSequenceNumber:      1,
+			LogicalBlockSize:          iso9660.SectorSize,
+			PathTableSize:             viso.pathTableJoliet.size(),
+			TypeLPathTableLoc:         pathTableJolietLLBA,
+			TypeMPathTableLoc:         pathTableJolietMLBA,
+			VolumeSetIdentifier:       iso9660.MangleStringD(volumeName, true),
+			VolumeCreationDateAndTime: iso9660.VolumeDescriptorTimestampFromTime(now),
+			FileStructureVersion:      1,
+			RootDirectoryEntry:        &viso.rootDir[0].dirEntryJoliet[0].FixedDirectoryEntry,
 		},
 	}
 

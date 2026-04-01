@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
-	"unsafe"
 
 	"github.com/ebitengine/purego"
 
@@ -137,12 +136,12 @@ func (l *LibCHDR) readMeatadata(handle fileHandle) ([]CDMetadata, error) {
 	rawTag := make([]byte, 512)
 	var rawTagLen uint32
 	for idx := uint32(0); ; idx++ {
-		errCode := l.getMetadata(handle, cdMetadataOldTag, idx, unsafe.SliceData(rawTag), uint32(len(rawTag)), &rawTagLen, nil, nil)
+		errCode := l.getMetadata(handle, cdMetadataOldTag, idx, &rawTag[0], uint32(len(rawTag)), &rawTagLen, nil, nil)
 		if errCode == metadataNotFound {
-			errCode = l.getMetadata(handle, cdMetadataTag, idx, unsafe.SliceData(rawTag), uint32(len(rawTag)), &rawTagLen, nil, nil)
+			errCode = l.getMetadata(handle, cdMetadataTag, idx, &rawTag[0], uint32(len(rawTag)), &rawTagLen, nil, nil)
 		}
 		if errCode == metadataNotFound {
-			errCode = l.getMetadata(handle, cdMetadataTag2, idx, unsafe.SliceData(rawTag), uint32(len(rawTag)), &rawTagLen, nil, nil)
+			errCode = l.getMetadata(handle, cdMetadataTag2, idx, &rawTag[0], uint32(len(rawTag)), &rawTagLen, nil, nil)
 		}
 		if errCode == metadataNotFound {
 			break
@@ -257,7 +256,7 @@ func (f *File) loadHunk(hunkNum int) error {
 		f.currentHunkData = make([]byte, f.Header.HunkBytes)
 	}
 
-	readRes := f.lib.read(f.handle, uint32(hunkNum), unsafe.SliceData(f.currentHunkData))
+	readRes := f.lib.read(f.handle, uint32(hunkNum), &f.currentHunkData[0])
 	if err := f.lib.makeError(readRes); err != nil {
 		return fmt.Errorf("chd: read hunk %d: %w", hunkNum, err)
 	}
@@ -292,7 +291,7 @@ func (f *File) Read(b []byte) (int, error) {
 		// if request buffer is large enough to fit whole hunk from the beginning
 		// we can just read it directly into a Header
 		if offsetInHunk == 0 && len(b) >= int(f.Header.HunkBytes) {
-			readRes := f.lib.read(f.handle, uint32(desiredHunkNum), unsafe.SliceData(b))
+			readRes := f.lib.read(f.handle, uint32(desiredHunkNum), &b[0])
 			if err := f.lib.makeError(readRes); err != nil {
 				return read, fmt.Errorf("chd: direct read hunk %d: %w", desiredHunkNum, err)
 			}
