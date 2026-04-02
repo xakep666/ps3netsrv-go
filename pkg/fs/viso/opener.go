@@ -40,7 +40,7 @@ func translatePath(path string) (string, fileType) {
 func (Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.File, error) {
 	path, typ := translatePath(path)
 	if typ == genericFile {
-		return nil, fs.ErrNotExist
+		return nil, pkgfs.ErrTryNext
 	}
 
 	slog.InfoContext(ctx, "Engaging Virtual ISO", slog.String("path", path), slog.Bool("ps3_mode", typ == virtualPS3ISOFile))
@@ -49,7 +49,7 @@ func (Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.Fi
 
 func (Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.FileInfo, error) {
 	// special handling doesn't necessary here
-	return nil, fs.ErrNotExist
+	return nil, pkgfs.ErrTryNext
 }
 
 func (Opener) Name() string {

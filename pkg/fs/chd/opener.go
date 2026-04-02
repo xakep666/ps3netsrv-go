@@ -56,14 +56,14 @@ func (o *Opener) canProceed(path string) bool {
 func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.File, error) {
 	// .chd file will be reported and requested as .chd.iso
 	if !o.canProceed(path) {
-		return nil, fs.ErrNotExist
+		return nil, pkgfs.ErrTryNext
 	}
 
 	if ext := filepath.Ext(path); strings.EqualFold(ext, isoExt) {
 		path = strings.TrimSuffix(path, ext)
 	}
 
-	o.logger.Debug("Trying to open CHD file", slog.String("path", path))
+	o.logger.DebugContext(ctx, "Trying to open CHD file", slog.String("path", path))
 	f, err := fsys.SystemRoot().Open(path) // prevent recursion
 	if err != nil {
 		return nil, err
@@ -73,19 +73,21 @@ func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler
 	switch {
 	case errors.Is(err, nil):
 		// pass
-	case errors.Is(err, fs.ErrNotExist),
-		errors.Is(err, errors.ErrUnsupported):
-		return nil, fs.ErrNotExist
+	case errors.Is(err, errors.ErrUnsupported):
+		_ = f.Close()
+		return nil, pkgfs.ErrTryNext
 	default:
+		_ = f.Close()
 		return nil, err
 	}
 
 	if cf.Header.IsCDCodesOnly() {
 		cdFile, err := cf.AsCD()
 		if err != nil {
+			_ = f.Close()
 			return nil, err
 		}
-		o.logger.Debug("Detected CD-encoded CHD, wrapping",
+		o.logger.DebugContext(ctx, "Detected CD-encoded CHD, wrapping",
 			slog.String("path", path),
 			slog.Int("sector_data_size", cdFile.SectorDataSize),
 			slog.Int64("sectors_count", cdFile.SectorsCount),
@@ -127,12 +129,12 @@ func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.File
 	switch {
 	case errors.Is(err, nil):
 		// pass
-	case errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, pkgfs.ErrTryNext):
 		return nil, err
 	default:
-		// report as non-existing file if open fails with unhandled error to not block directory listing
-		o.logger.Error("CHD file open for stat failed, report as non-existing", logutil.ErrorAttr(err))
-		return nil, fs.ErrNotExist
+		// report as try next file if open fails with unhandled error to not block directory listing
+		o.logger.ErrorContext(ctx, "CHD file open for stat failed, report as try next", logutil.ErrorAttr(err))
+		return nil, pkgfs.ErrTryNext
 	}
 
 	defer cf.Close()

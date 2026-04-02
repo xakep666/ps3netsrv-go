@@ -54,7 +54,7 @@ itemsLoop:
 		sb.WriteString(itemName)
 		openPath := sb.String()
 
-		for j, opener := range dw.openers {
+		for _, opener := range dw.openers {
 			log.DebugContext(dw.ctx, "Trying opener", slog.String("opener", opener.Name()), slog.String("path", openPath))
 			st, err := opener.Stat(dw.ctx, dw.fsys, openPath)
 			switch {
@@ -62,10 +62,10 @@ itemsLoop:
 				log.DebugContext(dw.ctx, "Opener succeded", slog.String("opener", opener.Name()), slog.String("path", openPath))
 				items[i] = fs.FileInfoToDirEntry(st)
 				continue itemsLoop
-			case errors.Is(err, fs.ErrNotExist):
+			case errors.Is(err, ErrTryNext):
 				continue
 			default:
-				return fmt.Errorf("stat via opener %d: %w", j, err)
+				return fmt.Errorf("stat %q via opener %s: %w", openPath, opener.Name(), err)
 			}
 		}
 	}

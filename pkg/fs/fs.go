@@ -22,6 +22,8 @@ type SystemRoot interface {
 	Mkdir(path string, mode os.FileMode) error
 }
 
+var ErrTryNext = fmt.Errorf("try next") // returned by FileOpener methods indicating to try next one
+
 // FileOpener is a wrapper that incapsulates a path detection/translation logic.
 // It's methods return [fs.ErrNotExist] in case it didn't perform.
 type FileOpener interface {
@@ -64,7 +66,7 @@ openerLoop:
 		case errors.Is(err, nil):
 			log.DebugContext(ctx, "Opener succeeded", slog.String("opener", opener.Name()))
 			break openerLoop
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, ErrTryNext):
 			continue
 		default:
 			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
@@ -115,17 +117,17 @@ func (fsys *FS) Create(ctx context.Context, name string) (handler.WritableFile, 
 func (fsys *FS) Stat(ctx context.Context, name string) (fs.FileInfo, error) {
 	name = strings.TrimPrefix(name, string(filepath.Separator))
 	log := slog.With(slog.String("path_request", name), slog.String("fs_op", "stat"))
-	for i, opener := range fsys.openers {
+	for _, opener := range fsys.openers {
 		log.DebugContext(ctx, "Trying opener", slog.String("opener", opener.Name()))
 		st, err := opener.Stat(ctx, fsys, name)
 		switch {
 		case errors.Is(err, nil):
 			log.DebugContext(ctx, "Opener succeeded", slog.String("opener", opener.Name()))
 			return st, err
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, ErrTryNext):
 			continue
 		default:
-			return nil, fmt.Errorf("opener %d: %w", i, err)
+			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
 		}
 	}
 
