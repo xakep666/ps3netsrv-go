@@ -1,6 +1,7 @@
 package viso
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -58,7 +59,8 @@ var paramSFOPath = filepath.Join("PS3_GAME", "PARAM.SFO")
 // In ps3 game mode we have to parse PARAM.SFO and get TITLE_ID to create sector 1 and
 // write full volume size to sector 0.
 type VirtualISO struct {
-	fs        pkgfs.SystemRoot
+	ctx       context.Context
+	fs        *pkgfs.FS
 	root      string
 	ps3Mode   bool
 	createdAt time.Time
@@ -81,8 +83,8 @@ type VirtualISO struct {
 
 // NewVirtualISO creates a virtual iso object from given root optionally with some data for ps3 games.
 // Root path must be without ..'s.
-func NewVirtualISO(fsys pkgfs.SystemRoot, root string, ps3Mode bool) (*VirtualISO, error) {
-	rootStat, err := fsys.Stat(root)
+func NewVirtualISO(ctx context.Context, fsys *pkgfs.FS, root string, ps3Mode bool) (*VirtualISO, error) {
+	rootStat, err := fsys.Stat(ctx, root)
 	if err != nil {
 		return nil, fmt.Errorf("stat failed: %w", err)
 	}
@@ -93,6 +95,7 @@ func NewVirtualISO(fsys pkgfs.SystemRoot, root string, ps3Mode bool) (*VirtualIS
 
 	ret := &VirtualISO{
 		fs:        fsys,
+		ctx:       context.WithoutCancel(ctx),
 		root:      root,
 		ps3Mode:   ps3Mode,
 		createdAt: time.Now(),
@@ -127,11 +130,13 @@ func (viso *VirtualISO) init() error {
 		return fmt.Errorf("build fs failed: %w", err)
 	}
 
+	viso.ctx = nil
+
 	return nil
 }
 
 func (viso *VirtualISO) getTitleID() (string, error) {
-	f, err := viso.fs.Open(filepath.Join(viso.root, paramSFOPath))
+	f, err := viso.fs.Open(viso.ctx, filepath.Join(viso.root, paramSFOPath))
 	if err != nil {
 		return "", fmt.Errorf("param.sfo open failed: %w", err)
 	}
@@ -211,7 +216,7 @@ func (viso *VirtualISO) scanDirectory() error {
 	queue := []string{viso.root} // paths
 
 	processDirectory := func(path string) error {
-		dir, err := viso.fs.Open(path)
+		dir, err := viso.fs.Open(viso.ctx, path)
 		if err != nil {
 			return fmt.Errorf("dir %s open failed: %w", path, err)
 		}
@@ -244,7 +249,7 @@ func (viso *VirtualISO) scanDirectory() error {
 
 		for _, item := range items {
 			fullPath := filepath.Join(path, item.Name())
-			itemStat, err := viso.fs.Stat(fullPath)
+			itemStat, err := viso.fs.Stat(viso.ctx, fullPath)
 			if err != nil {
 				return fmt.Errorf("item %s stat failed: %w", fullPath, err)
 			}
@@ -690,7 +695,7 @@ func (viso *VirtualISO) Read(buf []byte) (read int, err error) {
 					offset, fileItem.path, fileItem.rLBA.Bytes(), fileItem.size.Sectors().Bytes())
 			}
 
-			f, err := fileItem.openOnDemand(viso.fs)
+			f, err := fileItem.openOnDemand(viso.ctx, viso.fs)
 			if err != nil {
 				return read, fmt.Errorf("failed to open %s: %w", fileItem.path, err)
 			}
@@ -784,7 +789,13 @@ func (viso *VirtualISO) ReadDir(count int) ([]fs.DirEntry, error) {
 	return nil, errors.ErrUnsupported
 }
 
-func (viso *VirtualISO) Stat() (fs.FileInfo, error) { return &virtualISOStat{viso}, nil }
+func (viso *VirtualISO) Stat() (fs.FileInfo, error) {
+	return &virtualISOStat{
+		name:      filepath.Base(viso.root),
+		totalSize: int64(viso.totalSize),
+		modTime:   viso.createdAt,
+	}, nil
+}
 
 func (viso *VirtualISO) Close() error {
 	if viso.isClosed {
@@ -803,16 +814,18 @@ func (viso *VirtualISO) Close() error {
 }
 
 type virtualISOStat struct {
-	iso *VirtualISO
+	name      string
+	totalSize int64
+	modTime   time.Time
 }
 
-func (s virtualISOStat) Name() string { return s.iso.Name() }
+func (s virtualISOStat) Name() string { return s.name }
 
-func (s virtualISOStat) Size() int64 { return int64(s.iso.totalSize) }
+func (s virtualISOStat) Size() int64 { return int64(s.totalSize) }
 
 func (s virtualISOStat) Mode() fs.FileMode { return fs.ModeIrregular }
 
-func (s virtualISOStat) ModTime() time.Time { return s.iso.createdAt }
+func (s virtualISOStat) ModTime() time.Time { return s.modTime }
 
 func (s virtualISOStat) IsDir() bool { return false }
 

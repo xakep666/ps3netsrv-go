@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/fs"
@@ -19,19 +20,19 @@ type WritableFile interface {
 }
 
 type FS interface {
-	Open(name string) (File, error)
-	Create(name string) (WritableFile, error)
-	Stat(name string) (fs.FileInfo, error)
-	Remove(name string) error
-	Mkdir(name string, mode fs.FileMode) error
+	Open(ctx context.Context, name string) (File, error)
+	Create(ctx context.Context, name string) (WritableFile, error)
+	Stat(ctx context.Context, name string) (fs.FileInfo, error)
+	Remove(ctx context.Context, name string) error
+	Mkdir(ctx context.Context, name string, mode fs.FileMode) error
 }
 
-func WalkDir(fsys FS, root string, fn fs.WalkDirFunc) error {
-	info, err := fsys.Stat(root)
+func WalkDir(ctx context.Context, fsys FS, root string, fn fs.WalkDirFunc) error {
+	info, err := fsys.Stat(ctx, root)
 	if err != nil {
 		err = fn(root, nil, err)
 	} else {
-		err = walkDir(fsys, root, fs.FileInfoToDirEntry(info), fn)
+		err = walkDir(ctx, fsys, root, fs.FileInfoToDirEntry(info), fn)
 	}
 	if errors.Is(err, fs.SkipDir) || errors.Is(err, fs.SkipAll) {
 		return nil
@@ -50,7 +51,7 @@ func reportDirError(name string, err error, d fs.DirEntry, walkDirFn fs.WalkDirF
 	return err
 }
 
-func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) error {
+func walkDir(ctx context.Context, fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) error {
 	if err := walkDirFn(name, d, nil); err != nil || !d.IsDir() {
 		if errors.Is(err, fs.SkipDir) && d.IsDir() {
 			// Successfully skipped directory.
@@ -59,7 +60,7 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 		return err
 	}
 
-	dirFile, err := fsys.Open(name)
+	dirFile, err := fsys.Open(ctx, name)
 	if err != nil {
 		return reportDirError(name, err, d, walkDirFn)
 	}
@@ -78,7 +79,7 @@ func walkDir(fsys FS, name string, d fs.DirEntry, walkDirFn fs.WalkDirFunc) erro
 
 		for _, d1 := range dirs {
 			name1 := filepath.Join(name, d1.Name())
-			if err := walkDir(fsys, name1, d1, walkDirFn); err != nil {
+			if err := walkDir(ctx, fsys, name1, d1, walkDirFn); err != nil {
 				if errors.Is(err, fs.SkipDir) {
 					break
 				}

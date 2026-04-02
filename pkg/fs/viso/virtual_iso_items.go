@@ -2,6 +2,7 @@ package viso
 
 import (
 	"cmp"
+	"context"
 	"encoding/binary"
 	"iter"
 	"path/filepath"
@@ -121,12 +122,12 @@ type fileItem struct {
 	rLBA iso9660.SizeSectors // virtual address of file start, we use this to control boundaries during read
 }
 
-func (i *fileItem) openOnDemand(fs pkgfs.SystemRoot) (handler.File, error) {
+func (i *fileItem) openOnDemand(ctx context.Context, fs *pkgfs.FS) (handler.File, error) {
 	if i.file != nil {
 		return i.file, nil
 	}
 
-	f, err := fs.Open(i.path)
+	f, err := fs.Open(ctx, i.path)
 	if err != nil {
 		return nil, err
 	}

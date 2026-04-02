@@ -1,6 +1,7 @@
 package chd
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -52,7 +53,7 @@ func (o *Opener) canProceed(path string) bool {
 	return strings.EqualFold(ext1, isoExt) && strings.EqualFold(ext2, chdExt)
 }
 
-func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) {
+func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.File, error) {
 	// .chd file will be reported and requested as .chd.iso
 	if !o.canProceed(path) {
 		return nil, fs.ErrNotExist
@@ -63,7 +64,7 @@ func (o *Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) 
 	}
 
 	o.logger.Debug("Trying to open CHD file", slog.String("path", path))
-	f, err := fsys.Open(path)
+	f, err := fsys.SystemRoot().Open(path) // prevent recursion
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +122,8 @@ func (c *fileView) Stat() (fs.FileInfo, error) {
 	return &fakeNameFileStat{fi}, nil
 }
 
-func (o *Opener) Stat(fsys pkgfs.SystemRoot, path string) (fs.FileInfo, error) {
-	cf, err := o.Open(fsys, path)
+func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.FileInfo, error) {
+	cf, err := o.Open(ctx, fsys, path)
 	switch {
 	case errors.Is(err, nil):
 		// pass

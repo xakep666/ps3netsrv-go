@@ -1,6 +1,7 @@
 package encryptediso
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -20,16 +21,16 @@ type keyedFile interface {
 	EncryptionKey() []byte
 }
 
-func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
+func (FileWrapper) WrapFile(ctx context.Context, fsys *pkgfs.FS, f handler.File) (handler.File, error) {
 	if kf, ok := handler.FileAsType[keyedFile](f); ok {
 		slog.Debug("received encrypted key-contained iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, kf.EncryptionKey(), false)
 	}
 
-	key, err := tryGetRedumpKey(fsys, f.Name())
+	key, err := tryGetRedumpKey(fsys.SystemRoot(), f.Name())
 	switch {
 	case errors.Is(err, nil):
-		slog.Debug("found key file for encrypted iso", slog.String("name", f.Name()))
+		slog.DebugContext(ctx, "found key file for encrypted iso", slog.String("name", f.Name()))
 		return NewEncryptedISO(f, key, false)
 	case errors.Is(err, fs.ErrNotExist):
 		return f, nil
