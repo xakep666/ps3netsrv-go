@@ -10,6 +10,8 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -183,8 +185,23 @@ func (sapp *serverApp) warnRoot() {
 	}
 }
 
-func (sapp *serverApp) warnLargeDir() {
+func (sapp *serverApp) scanAndWarn() {
 	const maxEntries = 4096 // from ps3netsrv
+
+	// notify user if file name can cause access issues
+	const allowedChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_ !\"%&'()*+,-./:;<=>?[]"
+	var allowedCharsSet [256]bool
+	for _, char := range allowedChars {
+		allowedCharsSet[char] = true
+	}
+
+	const maxBadNames = 10
+	badNameSamples := make([]string, 0, maxBadNames)
+	isBadName := func(name string) bool {
+		return strings.ContainsFunc(name, func(r rune) bool {
+			return r > rune(len(allowedCharsSet)) || !allowedCharsSet[r]
+		})
+	}
 
 	queue := []string{sapp.Root}
 	scanDir := func(path string) {
@@ -206,6 +223,11 @@ func (sapp *serverApp) warnLargeDir() {
 
 			numEntries += len(entries)
 			for _, entry := range entries {
+				if len(badNameSamples) <= maxBadNames && isBadName(entry.Name()) {
+					relPath := filepath.Join(strings.TrimPrefix(path, sapp.Root), entry.Name())
+					badNameSamples = append(badNameSamples, strconv.Quote(relPath))
+				}
+
 				if entry.IsDir() {
 					queue = append(queue, filepath.Join(path, entry.Name()))
 				}
@@ -223,6 +245,12 @@ func (sapp *serverApp) warnLargeDir() {
 		queue = queue[:len(queue)-1]
 
 		scanDir(dir)
+	}
+
+	if len(badNameSamples) > 0 {
+		slog.Warn("Found files/directories with names containing unusual characters. These files can cause issues with WebMan Mod or other software on a console. Consider inspecting your collection and renaming files.",
+			"allowed_characters", allowedChars, "name_examples", badNameSamples,
+		)
 	}
 }
 
@@ -243,7 +271,7 @@ func (sapp *serverApp) Run() error {
 	sapp.setupLogger()
 	sapp.setupRuntime()
 	sapp.warnRoot()
-	go sapp.warnLargeDir() // asynchronously to not delay server startup
+	go sapp.scanAndWarn() // asynchronously to not delay server startup
 
 	var eg errgroup.Group
 	eg.Go(sapp.debugServer)

@@ -27,11 +27,8 @@ const (
 	VolumeTypePartition     byte = 3
 	VolumeTypeTerminator    byte = 255
 
-	ACharacters StringA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!\"%&'()*+,-./:;<=>?"
+	ACharacters StringA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_ !\"%&'()*+,-./:;<=>?"
 	DCharacters StringD = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-	// ECMA-119 7.4.2.2 defines d1-characters as
-	// "subject to agreement between the originator and the recipient of the volume".
-	D1Characters StringD1 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_!\"%&'()*+,-./:;<=>?"
 )
 
 const (
@@ -59,14 +56,6 @@ var (
 	dCharactersSet = sync.OnceValue(func() map[rune]struct{} {
 		m := make(map[rune]struct{}, len(DCharacters))
 		for _, r := range DCharacters {
-			m[r] = struct{}{}
-		}
-		return m
-	})
-
-	d1CharactersSet = sync.OnceValue(func() map[rune]struct{} {
-		m := make(map[rune]struct{}, len(D1Characters))
-		for _, r := range D1Characters {
 			m[r] = struct{}{}
 		}
 		return m
@@ -101,8 +90,11 @@ func (b SizeBytes) Sectors() SizeSectors {
 }
 
 type (
-	StringA  string
-	StringD  string
+	StringA string
+	StringD string
+	// ECMA-119 7.4.2.2 defines d1-characters as
+	// "subject to agreement between the originator and the recipient of the volume".
+	// We don't put special restrictions here.
 	StringD1 string
 )
 
@@ -440,15 +432,7 @@ func MangleStringD(in string, joliet bool) StringD {
 }
 
 func MangleStringD1(in string, joliet bool) StringD1 {
-	set := d1CharactersSet()
-	ret := strings.Map(func(r rune) rune {
-		if _, ok := set[r]; ok {
-			return r
-		}
-
-		return '_'
-	}, in)
-
+	ret := in
 	if joliet {
 		ret, _ = utf16Encoder.String(ret)
 	}

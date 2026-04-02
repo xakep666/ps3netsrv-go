@@ -15,7 +15,7 @@ will run without any external library on target system.
 
 * Write protection. Enabled by default, use flag `--allow-write` or corresponding parameter.
 * TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
-* [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
+* [Compressed images](#compressed-images) - save your disk space without filesystem-level compression. Note: PSP images are not supported now: https://github.com/xakep666/ps3netsrv-go/issues/37
 * Built-in client: see `ps3netsrv-go client --help`
 
 ### Supported ✅
