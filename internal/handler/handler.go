@@ -33,7 +33,7 @@ func (h *Handler) HandleOpenDir(ctx *Context, path string) bool {
 
 	log.InfoContext(ctx, "Open dir")
 
-	handle, err := h.Fs.Open(filepath.FromSlash(path))
+	handle, err := h.Fs.Open(ctx, filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Open failed", logutil.ErrorAttr(err))
 		return false
@@ -87,7 +87,7 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 		}
 
 		// Stat to resolve symlink
-		fileInfo, err := h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), name))
+		fileInfo, err := h.Fs.Stat(ctx, filepath.Join(ctx.State.CwdHandle.Name(), name))
 		if err != nil {
 			log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 			// If it doesn't exist (deleted or broken symlink?) or we get a permission error (symlink
@@ -128,7 +128,7 @@ func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
 
 		if info.Mode()&fs.ModeSymlink != 0 {
 			// Stat to resolve symlink
-			info, err = h.Fs.Stat(filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
+			info, err = h.Fs.Stat(ctx, filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
 			if err != nil {
 				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
@@ -145,7 +145,7 @@ func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error)
 	log := slog.With(slog.String("path", path))
 	log.InfoContext(ctx, "Stat file")
 
-	info, err := h.Fs.Stat(filepath.FromSlash(path))
+	info, err := h.Fs.Stat(ctx, filepath.FromSlash(path))
 	switch {
 	case errors.Is(err, nil):
 		return info, nil
@@ -169,7 +169,7 @@ func (h *Handler) HandleOpenFile(ctx *Context, path string) (fs.FileInfo, error)
 		ctx.State.ROFile = nil
 	}
 
-	f, err := h.Fs.Open(filepath.FromSlash(path))
+	f, err := h.Fs.Open(ctx, filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Open r/o file failed", logutil.ErrorAttr(err))
 		return nil, err
@@ -309,7 +309,7 @@ func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 	}
 
 	// path is a directory -> closing file, just return
-	stat, err := h.Fs.Stat(filepath.FromSlash(path))
+	stat, err := h.Fs.Stat(ctx, filepath.FromSlash(path))
 	if err == nil && stat.IsDir() {
 		return nil
 	}
@@ -318,7 +318,7 @@ func (h *Handler) HandleCreateFile(ctx *Context, path string) error {
 		return err
 	}
 
-	f, err := h.Fs.Create(filepath.FromSlash(path))
+	f, err := h.Fs.Create(ctx, filepath.FromSlash(path))
 	if err != nil {
 		log.WarnContext(ctx, "Create file failed", logutil.ErrorAttr(err))
 		return err
@@ -361,7 +361,7 @@ func (h *Handler) HandleDeleteFile(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Remove(filepath.FromSlash(path)); err != nil {
+	if err := h.Fs.Remove(ctx, filepath.FromSlash(path)); err != nil {
 		log.WarnContext(ctx, "Remove file failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -378,7 +378,7 @@ func (h *Handler) HandleMkdir(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Mkdir(filepath.FromSlash(path), os.ModePerm); err != nil {
+	if err := h.Fs.Mkdir(ctx, filepath.FromSlash(path), os.ModePerm); err != nil {
 		log.WarnContext(ctx, "Create directory failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -395,7 +395,7 @@ func (h *Handler) HandleRmdir(ctx *Context, path string) error {
 		return ErrWriteForbidden
 	}
 
-	if err := h.Fs.Remove(filepath.FromSlash(path)); err != nil {
+	if err := h.Fs.Remove(ctx, filepath.FromSlash(path)); err != nil {
 		log.WarnContext(ctx, "Remove directory failed", logutil.ErrorAttr(err))
 		return err
 	}
@@ -409,7 +409,7 @@ func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 
 	var size int64
 
-	_ = WalkDir(h.Fs, filepath.FromSlash(path), func(path string, de fs.DirEntry, err error) error {
+	_ = WalkDir(ctx, h.Fs, filepath.FromSlash(path), func(path string, de fs.DirEntry, err error) error {
 		if err != nil {
 			log.WarnContext(ctx, "Skipping path because of error",
 				slog.String("path", path), logutil.ErrorAttr(err))
@@ -420,7 +420,7 @@ func (h *Handler) HandleGetDirSize(ctx *Context, path string) (int64, error) {
 			return nil
 		}
 
-		info, err := h.Fs.Stat(path)
+		info, err := h.Fs.Stat(ctx, path)
 		if err != nil {
 			return err
 		}

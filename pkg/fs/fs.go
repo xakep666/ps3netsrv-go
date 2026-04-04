@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,17 +22,19 @@ type SystemRoot interface {
 	Mkdir(path string, mode os.FileMode) error
 }
 
+var ErrTryNext = fmt.Errorf("try next") // returned by FileOpener methods indicating to try next one
+
 // FileOpener is a wrapper that incapsulates a path detection/translation logic.
 // It's methods return [fs.ErrNotExist] in case it didn't perform.
 type FileOpener interface {
-	Open(fsys SystemRoot, path string) (handler.File, error)
-	Stat(fsys SystemRoot, path string) (fs.FileInfo, error)
+	Open(ctx context.Context, fsys *FS, path string) (handler.File, error)
+	Stat(ctx context.Context, fsys *FS, path string) (fs.FileInfo, error)
 	Name() string
 }
 
 // FileWrapper applies on already open file. It returns unmodified input and no error if it's not applied.
 type FileWrapper interface {
-	WrapFile(fsys SystemRoot, file handler.File) (handler.File, error)
+	WrapFile(ctx context.Context, fsys *FS, file handler.File) (handler.File, error)
 	Name() string
 }
 
@@ -49,7 +52,7 @@ func NewFS(root SystemRoot, openers []FileOpener, wrappers []FileWrapper) *FS {
 	}
 }
 
-func (fsys *FS) Open(path string) (handler.File, error) {
+func (fsys *FS) Open(ctx context.Context, path string) (handler.File, error) {
 	path = strings.TrimPrefix(path, string(filepath.Separator))
 	log := slog.With(slog.String("path_request", path), slog.String("fs_op", "open"))
 
@@ -57,13 +60,13 @@ func (fsys *FS) Open(path string) (handler.File, error) {
 	var err error
 openerLoop:
 	for _, opener := range fsys.openers {
-		log.Debug("Trying opener", slog.String("opener", opener.Name()))
-		file, err = opener.Open(fsys.root, path)
+		log.DebugContext(ctx, "Trying opener", slog.String("opener", opener.Name()))
+		file, err = opener.Open(ctx, fsys, path)
 		switch {
 		case errors.Is(err, nil):
-			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
+			log.DebugContext(ctx, "Opener succeeded", slog.String("opener", opener.Name()))
 			break openerLoop
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, ErrTryNext):
 			continue
 		default:
 			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
@@ -72,7 +75,7 @@ openerLoop:
 
 	// if we're here try to open raw requested path
 	if file == nil {
-		log.Debug("Openers didn't succeed, trying native")
+		log.DebugContext(ctx, "Openers didn't succeed, trying native")
 		file, err = fsys.root.Open(path)
 		if err != nil {
 			return nil, err
@@ -87,8 +90,10 @@ openerLoop:
 
 	if stat.IsDir() {
 		file = &dirWrapper{
-			File:     file,
-			fsys:     fsys.root,
+			File: file,
+
+			ctx:      context.WithoutCancel(ctx),
+			fsys:     fsys,
 			openPath: path,
 			openers:  fsys.openers,
 		}
@@ -96,7 +101,7 @@ openerLoop:
 
 	for _, wrapper := range fsys.wrappers {
 		log.Debug("Applying wrapper", slog.String("wrapper", wrapper.Name()))
-		file, err = wrapper.WrapFile(fsys.root, file)
+		file, err = wrapper.WrapFile(ctx, fsys, file)
 		if err != nil {
 			return nil, fmt.Errorf("wrapper %s: %w", wrapper.Name(), err)
 		}
@@ -105,35 +110,39 @@ openerLoop:
 	return file, nil
 }
 
-func (fsys *FS) Create(name string) (handler.WritableFile, error) {
+func (fsys *FS) Create(ctx context.Context, name string) (handler.WritableFile, error) {
 	return fsys.root.Create(strings.TrimPrefix(name, string(filepath.Separator)))
 }
 
-func (fsys *FS) Stat(name string) (fs.FileInfo, error) {
+func (fsys *FS) Stat(ctx context.Context, name string) (fs.FileInfo, error) {
 	name = strings.TrimPrefix(name, string(filepath.Separator))
 	log := slog.With(slog.String("path_request", name), slog.String("fs_op", "stat"))
-	for i, opener := range fsys.openers {
-		log.Debug("Trying opener", slog.String("opener", opener.Name()))
-		st, err := opener.Stat(fsys.root, name)
+	for _, opener := range fsys.openers {
+		log.DebugContext(ctx, "Trying opener", slog.String("opener", opener.Name()))
+		st, err := opener.Stat(ctx, fsys, name)
 		switch {
 		case errors.Is(err, nil):
-			log.Debug("Opener succeeded", slog.String("opener", opener.Name()))
+			log.DebugContext(ctx, "Opener succeeded", slog.String("opener", opener.Name()))
 			return st, err
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, ErrTryNext):
 			continue
 		default:
-			return nil, fmt.Errorf("opener %d: %w", i, err)
+			return nil, fmt.Errorf("opener %s: %w", opener.Name(), err)
 		}
 	}
 
-	log.Debug("Openers didn't succeed, trying native")
+	log.DebugContext(ctx, "Openers didn't succeed, trying native")
 	return fsys.root.Stat(name)
 }
 
-func (fsys *FS) Remove(name string) error {
+func (fsys *FS) Remove(ctx context.Context, name string) error {
 	return fsys.root.Remove(strings.TrimPrefix(name, string(filepath.Separator)))
 }
 
-func (fsys *FS) Mkdir(name string, mode os.FileMode) error {
+func (fsys *FS) Mkdir(ctx context.Context, name string, mode os.FileMode) error {
 	return fsys.root.Mkdir(strings.TrimPrefix(name, string(filepath.Separator)), mode)
+}
+
+func (fsys *FS) SystemRoot() SystemRoot {
+	return fsys.root
 }

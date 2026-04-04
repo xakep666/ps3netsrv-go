@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -20,7 +21,7 @@ type makeISOApp struct {
 }
 
 func (a *makeISOApp) Run() error {
-	viso, err := viso.NewVirtualISO(fs.NewRelaxedSystemRoot(a.Directory), ".", a.PS3Mode)
+	viso, err := viso.NewVirtualISO(context.Background(), fs.NewFS(fs.NewRelaxedSystemRoot(a.Directory), nil, nil), ".", a.PS3Mode)
 	if err != nil {
 		return fmt.Errorf("failed to build ISO: %w", err)
 	}

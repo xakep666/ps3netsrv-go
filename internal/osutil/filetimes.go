@@ -1,6 +1,7 @@
 package osutil
 
 import (
+	"context"
 	"io/fs"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 
 type FileTimesWrapper struct{}
 
-func (FileTimesWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
+func (FileTimesWrapper) WrapFile(ctx context.Context, fsys *pkgfs.FS, f handler.File) (handler.File, error) {
 	return &fileWithTimesStat{f}, nil
 }
 

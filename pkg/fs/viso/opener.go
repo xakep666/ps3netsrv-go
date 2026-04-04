@@ -1,6 +1,7 @@
 package viso
 
 import (
+	"context"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -36,19 +37,19 @@ func translatePath(path string) (string, fileType) {
 	}
 }
 
-func (Opener) Open(fsys pkgfs.SystemRoot, path string) (handler.File, error) {
+func (Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.File, error) {
 	path, typ := translatePath(path)
 	if typ == genericFile {
-		return nil, fs.ErrNotExist
+		return nil, pkgfs.ErrTryNext
 	}
 
-	slog.Debug("Engaging Virtual ISO", slog.String("path", path), slog.Bool("ps3_mode", typ == virtualPS3ISOFile))
-	return NewVirtualISO(fsys, path, typ == virtualPS3ISOFile)
+	slog.InfoContext(ctx, "Engaging Virtual ISO", slog.String("path", path), slog.Bool("ps3_mode", typ == virtualPS3ISOFile))
+	return NewVirtualISO(ctx, fsys, path, typ == virtualPS3ISOFile)
 }
 
-func (Opener) Stat(fsys pkgfs.SystemRoot, path string) (fs.FileInfo, error) {
+func (Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.FileInfo, error) {
 	// special handling doesn't necessary here
-	return nil, fs.ErrNotExist
+	return nil, pkgfs.ErrTryNext
 }
 
 func (Opener) Name() string {

@@ -1,6 +1,7 @@
 package iso3k3y
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,7 +29,7 @@ func (kf *keyedFile) Unwrap() handler.File {
 
 type KeyExtractionFileWrapper struct{}
 
-func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
+func (KeyExtractionFileWrapper) WrapFile(ctx context.Context, fsys *pkgfs.FS, f handler.File) (handler.File, error) {
 	// 3k3y makes sense only for iso images
 	if !strings.EqualFold(filepath.Ext(f.Name()), isoExt) {
 		return f, nil
@@ -45,11 +46,11 @@ func (KeyExtractionFileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) 
 	case errors.Is(err, nil):
 		if len(key) == 0 {
 			// unencrypted 3k3y
-			slog.Debug("unencrypted 3k3y image detected", slog.String("name", f.Name()))
+			slog.DebugContext(ctx, "unencrypted 3k3y image detected", slog.String("name", f.Name()))
 			return NewISO3k3y(f)
 		}
 
-		slog.Debug("encrypted 3k3y image with key detected", slog.String("name", f.Name()))
+		slog.DebugContext(ctx, "encrypted 3k3y image with key detected", slog.String("name", f.Name()))
 		return &keyedFile{
 			File: f,
 			key:  key,
@@ -67,7 +68,7 @@ func (KeyExtractionFileWrapper) Name() string {
 
 type FileWrapper struct{}
 
-func (FileWrapper) WrapFile(fsys pkgfs.SystemRoot, f handler.File) (handler.File, error) {
+func (FileWrapper) WrapFile(ctx context.Context, fsys *pkgfs.FS, f handler.File) (handler.File, error) {
 	// if it's already a 3k3y iso, just pass
 	if _, is3k3y := handler.FileAsType[*ISO3k3y](f); is3k3y {
 		return f, nil
