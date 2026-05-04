@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: rtissera/libchdr
-          ref: 7715de186a6798642ac81912b02667087fec2c2b
+          ref: v0.3.0
       - name: Setup Zig compliler
         uses: mlugg/setup-zig@v2
       - name: Install 'zigcc'
