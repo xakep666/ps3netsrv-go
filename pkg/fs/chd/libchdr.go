@@ -322,19 +322,6 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
-type fileStat struct {
-	fs.FileInfo
-	header     *FileHeader
-	cdMetadata []CDMetadata
-}
-
-func (s *fileStat) Size() int64 {
-	return int64(s.header.LogicalBytes)
-}
-
-func (s *fileStat) Mode() fs.FileMode {
-	return s.FileInfo.Mode() | fs.ModeIrregular
-}
 
 func (s *fileStat) Unwrap() fs.FileInfo {
 	return s.FileInfo

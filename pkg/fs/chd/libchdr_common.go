@@ -288,3 +288,17 @@ func (f *File) AsCD() (*CDFile, error) {
 func (c *CDFile) Unwrap() handler.File {
 	return c.privateFile
 }
+
+type fileStat struct {
+	fs.FileInfo
+	header     *FileHeader
+	cdMetadata []CDMetadata
+}
+
+func (s *fileStat) Size() int64 {
+	return int64(s.header.LogicalBytes)
+}
+
+func (s *fileStat) Mode() fs.FileMode {
+	return s.FileInfo.Mode() | fs.ModeIrregular
+}

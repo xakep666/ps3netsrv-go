@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -56,6 +57,10 @@ func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler
 		return nil, err
 	}
 
+	return o.openFromFile(ctx, path, f)
+}
+
+func (o *Opener) openFromFile(ctx context.Context, path string, f *os.File) (handler.File, error) {
 	cf, err := o.lib.NewFile(f)
 	switch {
 	case errors.Is(err, nil):
@@ -90,15 +95,47 @@ func (*Opener) Name() string {
 }
 
 func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.FileInfo, error) {
-	cf, err := o.Open(ctx, fsys, path)
+	if !o.canProceed(path) {
+		return nil, pkgfs.ErrTryNext
+	}
+
+	o.logger.DebugContext(ctx, "Trying to open CHD file for stat", slog.String("path", path))
+	f, err := fsys.SystemRoot().Open(path) // prevent recursion
+	if err != nil {
+		// report as try next file if open fails with unhandled error to not block directory listing
+		o.logger.ErrorContext(ctx, "CHD file open for stat failed, report as try next", logutil.ErrorAttr(err))
+		return nil, pkgfs.ErrTryNext
+	}
+
+	// if file is not cd-encoded we don't need to fully open it in libchdr
+	hdr, err := o.lib.ReadHeader(f)
+	if err != nil {
+		o.logger.DebugContext(ctx, "CHD read header failed, fallback to NewFile", logutil.ErrorAttr(err))
+	}
+	if err == nil && !hdr.IsCDCodesOnly() {
+		defer f.Close()
+
+		fi, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+
+		return &fileStat{
+			FileInfo: fi,
+			header:   hdr,
+		}, nil
+	}
+
+	cf, err := o.openFromFile(ctx, path, f)
 	switch {
 	case errors.Is(err, nil):
 		// pass
-	case errors.Is(err, pkgfs.ErrTryNext):
-		return nil, err
+	case errors.Is(err, errors.ErrUnsupported),
+		errors.Is(err, pkgfs.ErrTryNext):
+		return nil, pkgfs.ErrTryNext
 	default:
 		// report as try next file if open fails with unhandled error to not block directory listing
-		o.logger.ErrorContext(ctx, "CHD file open for stat failed, report as try next", logutil.ErrorAttr(err))
+		o.logger.ErrorContext(ctx, "CHD file open (NewFile) for stat failed, report as try next", logutil.ErrorAttr(err))
 		return nil, pkgfs.ErrTryNext
 	}
 
