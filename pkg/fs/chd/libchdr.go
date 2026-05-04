@@ -204,29 +204,11 @@ func (l *LibCHDR) ReadHeader(f handler.File) (*FileHeader, error) {
 	defer cgoFileHandle.Delete()
 
 	var header FileHeader
-	if err := l.makeError(l.readHeaderCallbacks(l.callbacks, cgoFileHandle, &header)); err == nil {
-		return &header, nil
+	if err := l.makeError(l.readHeaderCallbacks(l.callbacks, cgoFileHandle, &header)); err != nil {
+		return nil, err
 	}
 
-	// workaround until https://github.com/rtissera/libchdr/pull/146 is merged or that issue is fixed somehow
-	var chdFileHandle fileHandle
-	// special wrapper to avoid file closing by libchdr
-	chdErrCode := l.openFileCallbacks(l.callbacks, osutil.NewHandle(&nopCloserFile{f}), fileModeRead, 0, &chdFileHandle)
-	if err := l.makeError(chdErrCode); err != nil {
-		return nil, fmt.Errorf("chd: open: %w", err)
-	}
-	defer l.close(chdFileHandle)
-
-	// clone to not refer to C memory
-	return new(*l.getHeader(chdFileHandle)), nil
-}
-
-type nopCloserFile struct {
-	handler.File
-}
-
-func (*nopCloserFile) Close() error {
-	return nil
+	return &header, nil
 }
 
 func (l *LibCHDR) makeError(code errorCode) error {
