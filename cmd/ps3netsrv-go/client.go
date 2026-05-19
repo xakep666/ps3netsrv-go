@@ -251,11 +251,11 @@ func (c *clientReadCmd) Run(client *client.Client) error {
 	fmt.Fprintf(os.Stderr, "Reading file %q from server\n", c.Path)
 	target := bar.ProxyWriter(targetFile)
 	for count > 0 {
-		readBytes := min(c.BlockSize, uint32(count))
+		readBytes := min(int64(c.BlockSize), count)
 		if c.NonCritical {
-			err = client.ReadFile(sigCtx, readBytes, uint64(offset), target)
+			err = client.ReadFile(sigCtx, uint32(readBytes), uint64(offset), target)
 		} else {
-			err = client.ReadFileCritical(sigCtx, readBytes, uint64(offset), target)
+			err = client.ReadFileCritical(sigCtx, uint32(readBytes), uint64(offset), target)
 		}
 		if err != nil {
 			return err

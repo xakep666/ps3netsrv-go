@@ -332,7 +332,8 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 		item.dirEntry = append(item.dirEntry, dotEntry, dotDotEntry)
 	}
 
-	totalSizeBytes += dotEntry.Size() + dotDotEntry.Size()
+	totalSizeBytes = dotEntry.AddSize(totalSizeBytes)
+	totalSizeBytes = dotDotEntry.AddSize(totalSizeBytes)
 
 	// file entries
 	for _, fileItem := range item.files {
@@ -375,7 +376,7 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 				item.dirEntry = append(item.dirEntry, entry)
 			}
 
-			totalSizeBytes += entry.Size()
+			totalSizeBytes = entry.AddSize(totalSizeBytes)
 		}
 	}
 
@@ -405,11 +406,11 @@ func (viso *VirtualISO) makeDirEntries(item *dirItem, joliet bool) error {
 			item.dirEntry = append(item.dirEntry, entry)
 		}
 
-		totalSizeBytes += entry.Size()
+		totalSizeBytes = entry.AddSize(totalSizeBytes)
 	}
 
 	// total size must be integer number of sectors so ceil it if needed
-	totalSizeBytes = totalSizeBytes.Sectors().Bytes()
+	totalSizeBytes = totalSizeBytes.AlignToSectors()
 
 	// set correct size to first entry
 	if joliet {
@@ -690,9 +691,9 @@ func (viso *VirtualISO) Read(buf []byte) (read int, err error) {
 					fileItem.path, fileItem.rLBA.Bytes(), offset)
 			}
 
-			if offset >= fileItem.rLBA.Bytes()+fileItem.size.Sectors().Bytes() {
+			if offset >= fileItem.rLBA.Bytes()+fileItem.size.AlignToSectors() {
 				return read, fmt.Errorf("offset (%d) greater than padded file %s location(%d)+size(%d)",
-					offset, fileItem.path, fileItem.rLBA.Bytes(), fileItem.size.Sectors().Bytes())
+					offset, fileItem.path, fileItem.rLBA.Bytes(), fileItem.size.AlignToSectors())
 			}
 
 			f, err := fileItem.openOnDemand(viso.ctx, viso.fs)

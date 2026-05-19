@@ -89,6 +89,12 @@ func (b SizeBytes) Sectors() SizeSectors {
 	return sectors
 }
 
+// AlignToSectors is semantically equivalent to b.Sectors().Bytes()
+func (b SizeBytes) AlignToSectors() SizeBytes {
+	const sectorMask = SectorSize - 1
+	return (b + sectorMask) & ^sectorMask
+}
+
 type (
 	StringA string
 	StringD string
@@ -214,7 +220,8 @@ func (de DirectoryEntry) Size() SizeBytes {
 
 func (de DirectoryEntry) Encode(enc *Encoder) {
 	// if entry doesn't fit in sector, begin new sector
-	if encSize := enc.Size(); de.Size() > encSize.Sectors().Bytes()-encSize {
+	// preserve original behaviour: do not dense-pack entries if last entry size exactly matches free space in sector
+	if encSize := enc.Size(); de.Size() >= encSize.AlignToSectors()-encSize {
 		enc.PadLastSector()
 	}
 
@@ -228,6 +235,14 @@ func (de DirectoryEntry) Encode(enc *Encoder) {
 
 	// set size
 	enc.SetByteAt(byte(enc.Size()-startPos), startPos)
+}
+
+func (de DirectoryEntry) AddSize(to SizeBytes) SizeBytes {
+	selfSize := de.Size()
+	if freeInSector := to.AlignToSectors() - to; freeInSector <= selfSize {
+		to += freeInSector
+	}
+	return to + selfSize
 }
 
 type PathTableEntry struct {

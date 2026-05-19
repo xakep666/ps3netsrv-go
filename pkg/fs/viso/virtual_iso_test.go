@@ -3,6 +3,7 @@ package viso_test
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -82,6 +83,14 @@ func TestMakeFullImage(t *testing.T) {
 		t.Logf("Generated file hash: %x", bigFileHash)
 	}
 
+	require.NoError(t, root.Mkdir(filepath.Join(isoRoot, "dir3"), os.ModePerm))
+	for i := range 5000 {
+		name := fmt.Sprintf("small_file_%d.txt", i)
+		require.NoError(t,
+			root.WriteFile(filepath.Join(isoRoot, "dir3", name), []byte(name), os.ModePerm),
+		)
+	}
+
 	viso, err := viso.NewVirtualISO(t.Context(), pkgfs.NewFS(root, nil, nil), isoRoot, false)
 	require.NoError(t, err)
 
@@ -154,4 +163,15 @@ func TestMakeFullImage(t *testing.T) {
 			assert.Equal(t, bigFileHash, hw.Sum(nil))
 		})
 	}
+
+	t.Run("dir3/small_file_x.txt", func(t *testing.T) {
+		for i := range 5000 {
+			name := fmt.Sprintf("small_file_%d.txt", i)
+			content, err := os.ReadFile(filepath.Join(mountPath, "dir3", name))
+			if assert.NoError(t, err) {
+				assert.Equal(t, name, string(content))
+			}
+
+		}
+	})
 }

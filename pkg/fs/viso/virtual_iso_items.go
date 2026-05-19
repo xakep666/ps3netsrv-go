@@ -105,10 +105,11 @@ func (l dirItemList) size(joliet bool) iso9660.SizeBytes {
 		}
 
 		for _, entry := range entries {
-			ret += entry.Size()
+			// bring into new sector if not enough space in current
+			ret = entry.AddSize(ret)
 		}
 
-		ret = ret.Sectors().Bytes() // directory entries of one directory aligned to sector
+		ret = ret.AlignToSectors() // directory entries of one directory aligned to sector
 	}
 
 	return ret
@@ -198,7 +199,7 @@ func (l filesList) filesToRead(toRead, offset iso9660.SizeBytes) iter.Seq[*fileI
 			}
 
 			// file size may be actually not aligned to sector
-			read := file.size.Sectors().Bytes() - (offset - file.rLBA.Bytes())
+			read := file.size.AlignToSectors() - (offset - file.rLBA.Bytes())
 			toRead -= read
 			offset += read
 		}
