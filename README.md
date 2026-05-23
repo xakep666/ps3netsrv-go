@@ -25,11 +25,11 @@ will run without any external library on target system.
 * Client addresses whitelist, capping amount of connections
 * Virtual ISO: games in directory format (residing in `GAMES`).
 * 3k3y/Redump images: if iso path is `<root>/PS3ISO/game.iso` than dedicated key expected at `<root>/PS3ISO/game.dkey` or at `<root>/REDKEY/game.dkey`
+* "Search remote subfolders" WebMAN feature
 
 ### Unsupported ❌
 
 * Multipart files `*.666xx`
-* Subdir scanning if requested by WebMAN https://github.com/xakep666/ps3netsrv-go/issues/29
 * PS2 Games, more tests/debugging needed https://github.com/xakep666/ps3netsrv-go/issues/31
 
 ## Compressed images

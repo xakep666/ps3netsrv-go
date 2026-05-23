@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
@@ -28,21 +30,23 @@ type Handler struct {
 	AllowWrite bool
 }
 
-func (h *Handler) HandleOpenDir(ctx *Context, path string) bool {
+func (h *Handler) HandleOpenDir(ctx *Context, path string) (bool, error) {
 	log := slog.With(slog.String("path", path))
 
 	log.InfoContext(ctx, "Open dir")
 
+	subdirs := strings.HasSuffix(path, "//")
+	if subdirs {
+		path = path[:len(path)-1]
+	}
 	handle, err := h.Fs.Open(ctx, filepath.FromSlash(path))
 	if err != nil {
-		log.WarnContext(ctx, "Open failed", logutil.ErrorAttr(err))
-		return false
+		return false, fmt.Errorf("open failed: %w", err)
 	}
 
 	info, err := handle.Stat()
 	if err != nil {
-		log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
-		return false
+		return false, fmt.Errorf("stat failed: %w", err)
 	}
 
 	if ctx.State.CwdHandle != nil {
@@ -50,35 +54,38 @@ func (h *Handler) HandleOpenDir(ctx *Context, path string) bool {
 			log.WarnContext(ctx, "Close ctx.State.CwdHandle failed", logutil.ErrorAttr(err))
 		}
 		ctx.State.CwdHandle = nil
+		ctx.State.Subdirs = false
 	}
 
 	ctx.State.CwdHandle = handle
+	ctx.State.Subdirs = subdirs
 
 	// it's crucial to send "true" for directory and "false" for file
-	return info.IsDir()
+	return info.IsDir(), nil
 }
 
-func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
+func (h *Handler) HandleReadDirEntry(ctx *Context) (fs.FileInfo, error) {
 	log := slog.Default()
 
 	log.InfoContext(ctx, "Read Dir Entry")
 
 	if ctx.State.CwdHandle == nil {
 		log.WarnContext(ctx, "No open dir")
-		return nil
+		return nil, nil
 	}
 
 	for {
 		items, err := ctx.State.CwdHandle.ReadDir(1)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.WarnContext(ctx, "ReadDir failed", logutil.ErrorAttr(err))
+				return nil, fmt.Errorf("ReadDir failed: %w", err)
 			}
 			if err := ctx.State.CwdHandle.Close(); err != nil {
-				log.WarnContext(ctx, "Close ctx.State.CwdHandle failed", logutil.ErrorAttr(err))
+				return nil, fmt.Errorf("Close failed: %w", err)
 			}
 			ctx.State.CwdHandle = nil
-			return nil
+			ctx.State.Subdirs = false
+			return nil, nil
 		}
 
 		name := items[0].Name()
@@ -96,28 +103,31 @@ func (h *Handler) HandleReadDirEntry(ctx *Context) fs.FileInfo {
 			continue
 		}
 
-		return fileInfo
+		return fileInfo, nil
 	}
 }
 
-func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
-	log := slog.Default()
+type prefixedNameInfo struct {
+	prefix string
+	fs.FileInfo
+}
 
-	if ctx.State.CwdHandle == nil {
-		log.WarnContext(ctx, "Reading non-opened dir")
-		return []fs.FileInfo{}
+func (i *prefixedNameInfo) Name() string {
+	return path.Join(i.prefix, i.FileInfo.Name())
+}
+
+func (h *Handler) readDir(ctx *Context, namePrefix string, dir File, level int, files []fs.FileInfo) ([]fs.FileInfo, error) {
+	if level <= 0 {
+		return files, nil
 	}
 
-	log = log.With(slog.String("path", ctx.State.CwdHandle.Name()))
-	log.InfoContext(ctx, "Read dir")
+	log := slog.With(slog.String("namePrefix", namePrefix), slog.String("path", dir.Name()))
 
-	entries, err := ctx.State.CwdHandle.ReadDir(-1)
+	entries, err := dir.ReadDir(-1)
 	if err != nil {
-		log.WarnContext(ctx, "Read dir failed", logutil.ErrorAttr(err))
-		return []fs.FileInfo{}
+		return []fs.FileInfo{}, err
 	}
 
-	var files []fs.FileInfo
 	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
@@ -128,17 +138,64 @@ func (h *Handler) HandleReadDir(ctx *Context) []fs.FileInfo {
 
 		if info.Mode()&fs.ModeSymlink != 0 {
 			// Stat to resolve symlink
-			info, err = h.Fs.Stat(ctx, filepath.Join(ctx.State.CwdHandle.Name(), entry.Name()))
+			info, err = h.Fs.Stat(ctx, filepath.Join(dir.Name(), entry.Name()))
 			if err != nil {
 				log.WarnContext(ctx, "Stat failed", logutil.ErrorAttr(err))
 				// Ignore broken symbolic links
 				continue
 			}
 		}
+
+		if namePrefix != "" {
+			info = &prefixedNameInfo{
+				prefix:   namePrefix,
+				FileInfo: info,
+			}
+		}
+
+		if info.IsDir() && !ctx.State.Subdirs {
+			files = append(files, info)
+			continue
+		}
+
+		// subdir mode skips all directory entries
+		if info.IsDir() {
+			dirFile, err := h.Fs.Open(ctx, filepath.Join(dir.Name(), entry.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("open subdir %s failed: %w", entry.Name(), err)
+			}
+
+			files, err = h.readDir(ctx, path.Join(namePrefix, entry.Name()), dirFile, level-1, files)
+			_ = dirFile.Close()
+			if err != nil {
+				return nil, fmt.Errorf("read subdir %s failed: %w", entry.Name(), err)
+			}
+			continue
+		}
+
 		files = append(files, info)
 	}
 
-	return files
+	return files, nil
+}
+
+func (h *Handler) HandleReadDir(ctx *Context) ([]fs.FileInfo, error) {
+	log := slog.Default()
+
+	if ctx.State.CwdHandle == nil {
+		log.WarnContext(ctx, "Reading non-opened dir")
+		return []fs.FileInfo{}, nil
+	}
+
+	log = log.With(slog.String("path", ctx.State.CwdHandle.Name()))
+	log.InfoContext(ctx, "Read dir")
+
+	level := 1
+	if ctx.State.Subdirs {
+		level = 2
+	}
+
+	return h.readDir(ctx, "", ctx.State.CwdHandle, level, nil)
 }
 
 func (h *Handler) HandleStatFile(ctx *Context, path string) (fs.FileInfo, error) {
@@ -199,20 +256,21 @@ func (h *Handler) HandleOpenFile(ctx *Context, path string) (fs.FileInfo, error)
 	return fi, nil
 }
 
-func (h *Handler) HandleCloseFile(ctx *Context) {
+func (h *Handler) HandleCloseFile(ctx *Context) error {
 	if ctx.State.ROFile == nil {
-		return
+		return nil
 	}
 
 	log := slog.Default()
 	log.DebugContext(ctx, "Close R/O file")
 
 	if err := ctx.State.ROFile.Close(); err != nil {
-		log.WarnContext(ctx, "Close R/O file failed", logutil.ErrorAttr(err))
+		return err
 	}
 
 	ctx.State.ROFile = nil
 	ctx.State.CDSectorSize = 0
+	return nil
 }
 
 func (h *Handler) HandleReadFile(ctx *Context, limit uint32, offset uint64, wr server.ReadFileResponseWriter) error {

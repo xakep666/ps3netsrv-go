@@ -7,6 +7,7 @@ import (
 
 type State struct {
 	CwdHandle    File
+	Subdirs      bool
 	ROFile       File
 	CDSectorSize int // of ROFile, used by ReadCD2048Critical
 	WOFile       WritableFile
