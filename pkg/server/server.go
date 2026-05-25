@@ -149,19 +149,36 @@ func (s *Server[StateT]) handleOpenDir(ctx *Context[StateT]) error {
 		return fmt.Errorf("read dir failed: %w", err)
 	}
 
-	return ctx.wr.SendOpenDirResult(s.Handler.HandleOpenDir(ctx, dirPath))
+	isDir, err := s.Handler.HandleOpenDir(ctx, dirPath)
+	if err != nil {
+		return err
+	}
+
+	return ctx.wr.SendOpenDirResult(isDir)
 }
 
 func (s *Server[StateT]) handleReadDirEntry(ctx *Context[StateT]) error {
-	return ctx.wr.SendReadDirEntryResult(s.Handler.HandleReadDirEntry(ctx))
+	entry, err := s.Handler.HandleReadDirEntry(ctx)
+	if err != nil {
+		return err
+	}
+	return ctx.wr.SendReadDirEntryResult(entry)
 }
 
 func (s *Server[StateT]) handleReadDirEntryV2(ctx *Context[StateT]) error {
-	return ctx.wr.SendReadDirEntryV2Result(s.Handler.HandleReadDirEntry(ctx))
+	entry, err := s.Handler.HandleReadDirEntry(ctx)
+	if err != nil {
+		return err
+	}
+	return ctx.wr.SendReadDirEntryV2Result(entry)
 }
 
 func (s *Server[StateT]) handleReadDir(ctx *Context[StateT]) error {
-	return ctx.wr.SendReadDirResult(s.Handler.HandleReadDir(ctx))
+	entries, err := s.Handler.HandleReadDir(ctx)
+	if err != nil {
+		return err
+	}
+	return ctx.wr.SendReadDirResult(entries)
 }
 
 func (s *Server[StateT]) handleStatFile(ctx *Context[StateT]) error {

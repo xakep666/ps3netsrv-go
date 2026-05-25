@@ -42,12 +42,12 @@ type ReadFileResponseWriter interface {
 }
 
 type Handler[StateT any] interface {
-	HandleOpenDir(ctx *Context[StateT], path string) bool
-	HandleReadDir(ctx *Context[StateT]) []fs.FileInfo
-	HandleReadDirEntry(ctx *Context[StateT]) fs.FileInfo
+	HandleOpenDir(ctx *Context[StateT], path string) (bool, error)
+	HandleReadDir(ctx *Context[StateT]) ([]fs.FileInfo, error)
+	HandleReadDirEntry(ctx *Context[StateT]) (fs.FileInfo, error)
 	HandleStatFile(ctx *Context[StateT], path string) (fs.FileInfo, error)
 	HandleOpenFile(ctx *Context[StateT], path string) (fs.FileInfo, error)
-	HandleCloseFile(ctx *Context[StateT])
+	HandleCloseFile(ctx *Context[StateT]) error
 	HandleReadFile(ctx *Context[StateT], limit uint32, offset uint64, w ReadFileResponseWriter) error
 	HandleReadFileCritical(ctx *Context[StateT], limit uint32, offset uint64, w io.Writer) error
 	HandleReadCD2048Critical(ctx *Context[StateT], startSector, sectorsToRead uint32, w io.Writer) error
