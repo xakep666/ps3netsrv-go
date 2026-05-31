@@ -137,23 +137,7 @@ func (f *File) Read(b []byte) (int, error) {
 	// read compressed blocks into the end of provided buffer to reduce syscalls amount
 	// compressed blocks size are always less or equal to original block size
 	// so buffer overflow will not occur
-	startBlockOffset, err := f.indexEntries.OffsetOf(startBlock)
-	if err != nil {
-		return 0, err
-	}
-	endBlockOffset, err := f.indexEntries.OffsetOf(startBlock + blocksToRead)
-	if err != nil {
-		return 0, err
-	}
-	readSize := endBlockOffset - startBlockOffset
-	compressedBlocks := b[len(b)-int(readSize):]
-
-	_, err = f.f.Seek(int64(startBlockOffset), io.SeekStart)
-	if err != nil {
-		return 0, err
-	}
-
-	_, err = io.ReadFull(f.f, compressedBlocks)
+	compressedBlocks, err := f.readCompressedBlocks(startBlock, blocksToRead, b)
 	if err != nil {
 		return 0, err
 	}
@@ -179,14 +163,34 @@ func (f *File) Read(b []byte) (int, error) {
 			return 0, err
 		}
 
-		read, err := dec(f.tmpBuf[:blockSize], b[:f.Header.BlockSize])
+		if len(b) >= int(f.Header.BlockSize) {
+			read, err := dec(f.tmpBuf[:blockSize], b[:f.Header.BlockSize])
+			if err != nil {
+				return 0, err
+			}
+
+			n += read
+			b = b[read:]
+			compressedBlocks = compressedBlocks[blockSize:]
+			continue
+		}
+
+		// cache block and finish if buffer is not big enough
+		if len(f.cachedBlock) < int(f.Header.BlockSize) {
+			f.cachedBlock = make([]byte, f.Header.BlockSize)
+		}
+
+		f.cachedBlockNum = -1
+
+		_, err = dec(f.tmpBuf[:blockSize], f.cachedBlock)
 		if err != nil {
 			return 0, err
 		}
 
-		n += read
-		b = b[read:]
-		compressedBlocks = compressedBlocks[blockSize:]
+		n += copy(b, f.cachedBlock)
+		f.cachedBlockNum = blockNum
+
+		break
 	}
 
 	f.offset += int64(n)
@@ -243,16 +247,41 @@ func (f *File) updateCachedBlock(blockNum int) error {
 	}
 
 	if len(f.cachedBlock) < int(f.Header.BlockSize) {
-		f.cachedBlock = make([]byte, len(f.cachedBlock))
+		f.cachedBlock = make([]byte, f.Header.BlockSize)
 	}
 
-	_, err = dec(f.tmpBuf, f.cachedBlock)
+	_, err = dec(f.tmpBuf[:blockSize], f.cachedBlock)
 	if err != nil {
 		return err
 	}
 
 	f.cachedBlockNum = blockNum
 	return nil
+}
+
+func (f *File) readCompressedBlocks(startBlock, blocksToRead int, b []byte) ([]byte, error) {
+	startBlockOffset, err := f.indexEntries.OffsetOf(startBlock)
+	if err != nil {
+		return nil, err
+	}
+	endBlockOffset, err := f.indexEntries.OffsetOf(startBlock + blocksToRead)
+	if err != nil {
+		return nil, err
+	}
+	readSize := endBlockOffset - startBlockOffset
+	compressedBlocks := b[len(b)-int(readSize):]
+
+	_, err = f.f.Seek(int64(startBlockOffset), io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = io.ReadFull(f.f, compressedBlocks)
+	if err != nil {
+		return nil, err
+	}
+
+	return compressedBlocks, nil
 }
 
 func (f *File) selectDecompressor(blockNum int, rawBlockSize uint64) (decompressor, error) {
