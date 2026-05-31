@@ -33,7 +33,9 @@ will run without any external library on target system.
 * PS2 Games, more tests/debugging needed https://github.com/xakep666/ps3netsrv-go/issues/31
 
 ## Compressed images
-`ps3netsrv-go` supports compressed images to help save disk space. Currently only MAME CHD format is supported.
+`ps3netsrv-go` supports compressed images to help save disk space. Currently following formats are supported:
+* [MAME CHD](#mame-chd)
+* [CSO/ZSO](#csozso)
 
 ### MAME CHD
 CHD is a format for space-efficient lossless compression that preserves ability to randomly access data without full decompression of whole file.
@@ -65,6 +67,22 @@ Use [chdman](https://docs.mamedev.org/tools/chdman.html) tool maintained by MAME
 * `purego` does not work on some platforms supported by Go (i.e. `aix` and `ppc64`). However, they're pretty exotic nowdays and it's highly unlikely to see `ps3netsrv-go` running on them.
 * `libchdr` does not support `AVHuff` compression codec: https://github.com/rtissera/libchdr/issues/69. However it's used mainly for laserdiscs so it's very unlikely to meet it in videogame images.
 * Mixed CD/non-CD codecs (`cdlz` and `lzma`) and mixed CD modes (`MODE1`, `MODE1/RAW`, etc. in image metadata) are not supported. It's possible to create such image only by specifying `-c` option in `chdman` and probably such images are not supported by other emulators as well.
+
+### CSO/ZSO
+These formats came from [PSP](https://github.com/PSP-Archive/ARK-4/wiki/ISO-Driver#compressed-iso-formats) and currently supported in multiple projects, i.e. 
+[Open PS2 Loader](https://github.com/ps2homebrew/Open-PS2-Loader).
+
+Unlike CHD these formats are pretty simple and uses only 1 or 2 compressiom algorithms to compress blocks: DEFLATE and/or LZ4. So compression ratio may be worse than one for CHD images. But these formats does not require external libraries and supproted on all platforms.
+
+Supported formats: **CSO v1**, **CSO v2**, **ZSO**. No specific limitations on block size is imposed: 8K blocks are working as well as 2K blocks.
+
+#### Usage
+Just put your `.cso` or `.zso` images into necessary directory under server root: `PSXISO`, `PS2ISO` or even `PS3ISO`. 
+
+PS3 will see such images as `.cso.iso` or `.zso.iso` - server intentionally adds .iso extension to help console properly detecting a file type.
+
+Use [maxcso](https://github.com/unknownbrackets/maxcso) or any appropriate tool to compress existing images. 
+You can play with multiple parameters and find out which ones gives a better compression.
 
 ## Installation
 This project shipped in a multiple ways for convenient installation:

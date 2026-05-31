@@ -27,6 +27,7 @@ import (
 	"github.com/xakep666/ps3netsrv-go/internal/osutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/chd"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/cso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
@@ -146,6 +147,7 @@ func (sapp *serverApp) server() error {
 				[]fs.FileOpener{
 					viso.Opener{},
 					chd.NewOpener(slog.Default()),
+					cso.Opener{},
 				},
 				[]fs.FileWrapper{
 					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)

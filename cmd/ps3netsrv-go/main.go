@@ -28,6 +28,7 @@ type app struct {
 	DecryptApp decryptApp `cmd:"" name:"decrypt" help:"Decrypt encrypted images."`
 	MakeISOApp makeISOApp `cmd:"" name:"make-iso" help:"Make ISO image from directory."`
 	CHDApp     chdApp     `cmd:"" name:"chd" help:"Helpers for CHD images."`
+	CSOApp     csoApp     `cmd:"" name:"cso" help:"Helpers for CSO/ZSO images."`
 	ClientApp  clientApp  `cmd:"" name:"client" help:"Client for netiso protocol"`
 
 	Version kong.VersionFlag `help:"Show application version info."`
