@@ -2,13 +2,13 @@ package cso
 
 import (
 	"bytes"
-	"compress/flate"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"syscall"
 
+	"github.com/klauspost/compress/flate"
 	"github.com/pierrec/lz4/v4"
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 )
