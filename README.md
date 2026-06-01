@@ -36,6 +36,7 @@ will run without any external library on target system.
 `ps3netsrv-go` supports compressed images to help save disk space. Currently following formats are supported:
 * [MAME CHD](#mame-chd)
 * [CSO/ZSO](#csozso)
+* [Seekable ZSTD](#seekable-zstd)
 
 ### MAME CHD
 CHD is a format for space-efficient lossless compression that preserves ability to randomly access data without full decompression of whole file.
@@ -83,6 +84,23 @@ PS3 will see such images as `.cso.iso` or `.zso.iso` - server intentionally adds
 
 Use [maxcso](https://github.com/unknownbrackets/maxcso) or any appropriate tool to compress existing images. 
 You can play with multiple parameters and find out which ones gives a better compression.
+
+### Seekable ZSTD
+This is basically an add-on to regular [Zstandard](https://github.com/facebook/zstd) that brings ability to randomly access data within compressed file without total decompression.
+It is backward-compatible to Zstandard so such archives can be unpacked by all zstd-supporting tools. Basic idea behind this format is almost similar to CSO: use zstd frames to compress blocks of original file and put frame offsets into a file.
+
+Format specification is [here](https://github.com/facebook/zstd/blob/dev/contrib/seekable_format/zstd_seekable_compression_format.md).
+
+This format is (currently) not supported by emulators. I've decided to support it because zstd is a great modern compression algotirhm that can offer good compression ratio with good compression/decompression speeds. And there's a good [Go-library](https://github.com/SaveTheRbtz/zstd-seekable-format-go) to read such archives.
+
+#### Usage
+Images may be compressed by using [t2sz](https://github.com/martinellimarco/t2sz) or Go-tool [zstdseek](https://github.com/SaveTheRbtz/zstd-seekable-format-go/tree/main/cmd/zstdseek) shipped with library used to read such files. 
+
+Recommended block size is 2048 as usual. However `zstdseek` comes with [Content-Defined Chunking](https://joshleeb.com/posts/chunking.html) (FastCDC to be more specific) and may give even better compression ratio with dynamic blocks. I've tested with `128:2048:8192` parameter and it gave a bit better results than `t2zs`.
+
+Resulting `.zst` file may be put into necessary directory under server root: `PSXISO`, `PS2ISO` or even `PS3ISO`.
+
+PS3 will see such images as `.zst.iso` - server intentionally adds .iso extension to help console properly detecting a file type.
 
 ## Installation
 This project shipped in a multiple ways for convenient installation:

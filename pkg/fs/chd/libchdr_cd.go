@@ -67,7 +67,7 @@ func (f *CDFile) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += f.offset
 	case io.SeekEnd:
-		offset = f.offset - offset - 1
+		offset = f.Size + offset
 	default:
 		return 0, syscall.EINVAL
 	}
