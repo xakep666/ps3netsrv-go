@@ -30,6 +30,7 @@ import (
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/cso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/encryptediso"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/iso3k3y"
+	"github.com/xakep666/ps3netsrv-go/pkg/fs/seekablezstd"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/viso"
 	"github.com/xakep666/ps3netsrv-go/pkg/iprange"
 	"github.com/xakep666/ps3netsrv-go/pkg/server"
@@ -148,6 +149,7 @@ func (sapp *serverApp) server() error {
 					viso.Opener{},
 					chd.NewOpener(slog.Default()),
 					cso.Opener{},
+					seekablezstd.Opener{},
 				},
 				[]fs.FileWrapper{
 					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)
