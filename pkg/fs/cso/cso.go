@@ -322,7 +322,7 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += int64(f.offset)
 	case io.SeekEnd:
-		offset = int64(f.Header.UncompressedSize) - offset - 1
+		offset = int64(f.Header.UncompressedSize) + offset
 	default:
 		return 0, syscall.EINVAL
 	}

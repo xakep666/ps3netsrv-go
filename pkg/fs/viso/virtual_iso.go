@@ -769,7 +769,7 @@ func (viso *VirtualISO) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		offset += int64(viso.offset)
 	case io.SeekEnd:
-		offset = int64(viso.totalSize) - offset - 1
+		offset = int64(viso.totalSize) + offset
 	default:
 		return 0, syscall.EINVAL
 	}
