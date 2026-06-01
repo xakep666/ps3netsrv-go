@@ -105,3 +105,6 @@ changelog:
       - '^docs:'
       - '^test:'
       - '^chore:'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
