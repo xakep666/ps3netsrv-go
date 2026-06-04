@@ -1,7 +1,7 @@
 github.com/KimMachineGun/automemlimit v0.7.5 h1:RkbaC0MwhjL1ZuBKunGDjE/ggwAX43DwZrJqVwyveTk=
 github.com/KimMachineGun/automemlimit v0.7.5/go.mod h1:QZxpHaGOQoYvFhv/r4u3U0JTC2ZcOwbSr11UZF46UBM=
-github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0-rc.1 h1:/ngQs30lKmLhZYf9aMH4LGQX/7YQJxZaWcjskyzKv5E=
-github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0-rc.1/go.mod h1:I28hc9eaiqKCoOB+9Wh/P1IOScfm0xCgyWC6DAo0lmo=
+github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0 h1:LvK7+C6qgz8BPnmn7xGekf8vTkcqTvyBBHaLYIMxx0g=
+github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0/go.mod h1:I28hc9eaiqKCoOB+9Wh/P1IOScfm0xCgyWC6DAo0lmo=
 github.com/VividCortex/ewma v1.2.0 h1:f58SaIzcDXrSy3kWaHNvuJgJ3Nmz59Zji6XoJR/q1ow=
 github.com/VividCortex/ewma v1.2.0/go.mod h1:nz4BbCtbLyFDeC9SUHbtcT5644juEuWfUAUnGx7j5l4=
 github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d h1:licZJFw2RwpHMqeKTCYkitsPqHNxTmd4SNR5r94FGM8=
