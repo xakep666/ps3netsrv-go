@@ -54,7 +54,7 @@ func (o Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.
 		return nil, err
 	}
 
-	szr, err := seekable.NewReader(f, zr, seekable.WithRLogger(slog.Default()))
+	szr, err := seekable.NewReader(f, zr, seekable.WithReaderLogger(slog.Default()))
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ type file struct {
 	originalFile handler.File
 	openPath     string
 
-	reader seekable.Reader
+	reader *seekable.Reader
 }
 
 func (f *file) Read(b []byte) (int, error) {

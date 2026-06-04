@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/KimMachineGun/automemlimit v0.7.5
-	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.8.3
+	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0
 	github.com/alecthomas/kong v1.15.0
 	github.com/djherbis/times v1.6.0
 	github.com/docker/go-units v0.5.0
@@ -29,7 +29,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/google/btree v1.1.3 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
