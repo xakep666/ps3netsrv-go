@@ -133,6 +133,10 @@ func (fi *fileInfo) Name() string {
 	return fi.FileInfo.Name() + isoExt
 }
 
+func (fi *fileInfo) Unwrap() fs.FileInfo {
+	return fi.FileInfo
+}
+
 func (f *file) Stat() (fs.FileInfo, error) {
 	fi, err := f.originalFile.Stat()
 	if err != nil {

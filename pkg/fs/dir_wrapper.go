@@ -41,6 +41,8 @@ func (dw *dirWrapper) ReadDir(n int) ([]fs.DirEntry, error) {
 func (dw *dirWrapper) modifyEntries(items []fs.DirEntry) error {
 	log := slog.With(slog.String("request_path", dw.openPath), slog.String("op", "readdir"))
 
+	// TODO: run in parallel
+
 	// to reduce allocations during full path generation
 	var sb strings.Builder
 
