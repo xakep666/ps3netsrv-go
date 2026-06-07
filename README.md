@@ -234,6 +234,11 @@ $ go build -o ps3netsrv-go ./cmd/ps3netsrv-go/...
 > [!IMPORTANT]
 > Some platforms require extra build flags to be compiled successfully due to `purego` usage. See [support notes](https://github.com/ebitengine/purego/blob/main/README.md#support-notes) for details.
 
+To disable `purego` usage you can use `nopurego` build tag. I.e. 
+```bash
+$ go build -tags "nopurego" -o ps3netsrv-go ./cmd/ps3netsrv-go/...
+```
+
 If you're building for non-glibc Linux distro (like Alpine) or building on non-glibc distro for glibc-based distro (like on Alpine for Ubuntu) you need to properly specify `ldso` path via `GO_LDSO` environment variable:
 * `GO_LDSO=/lib/ld-musl-x86_64.so.1` for Alpine on x86_64 architecture
 * `GO_LDSO=/lib64/ld-linux-x86-64.so.2` for any glibc-based distro (Ubuntu/Debian/Arch/...) on x86_64 architecture
