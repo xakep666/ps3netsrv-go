@@ -39,7 +39,8 @@ import (
 type serverApp struct {
 	Root                  string           `help:"Root directory with games." default:"." env:"PS3NETSRV_ROOT"`
 	ListenAddr            string           `help:"Main server listen address." default:"0.0.0.0:38008" env:"PS3NETSRV_LISTEN_ADDR"`
-	Debug                 bool             `help:"Enable debug log messages." env:"PS3NETSRV_DEBUG"`
+	Debug                 bool             `help:"Enable debug log messages. DEPRECATED: use --log-level." env:"PS3NETSRV_DEBUG"`
+	LogLevel              slog.Level       `help:"Logging level." default:"info" env:"PS3NETSRV_LOG_LEVEL"`
 	JSONLog               bool             `help:"Output log messages in json format." env:"PS3NETSRV_JSON_LOG"`
 	DebugServerListenAddr string           `help:"Enables debug server (with pprof) if provided." env:"PS3NETSRV_DEBUG_SERVER_LISTEN_ADDR"`
 	ReadTimeout           time.Duration    `help:"Timeout for incoming commands. Connection will be closed on expiration. Use '0' to disable (by default). Enabling is recommended if you plan to host a lot of clients with possibly unstable connections." default:"0" env:"PS3NETSRV_READ_TIMEOUT"`
@@ -52,7 +53,7 @@ type serverApp struct {
 }
 
 func (sapp *serverApp) setupLogger() {
-	level := slog.LevelInfo
+	level := sapp.LogLevel
 	if sapp.Debug {
 		level = slog.LevelDebug
 	}

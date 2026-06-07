@@ -1,4 +1,4 @@
-//go:build !aix && !ppc64
+//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
 
 package chd
 
@@ -91,6 +91,10 @@ func (s *cdFileStat) Size() int64 {
 
 func (s *cdFileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
+}
+
+func (s *cdFileStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
 }
 
 func (f *CDFile) Stat() (fs.FileInfo, error) {

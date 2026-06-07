@@ -48,6 +48,10 @@ Powered by:
 * [zig cc](https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html) - C toolchain with fantastic cross-compilation abilities.
 
 #### Usage
+
+> [!IMPORTANT]
+> webMAN MOD version must be at least [1.47.48q](https://github.com/aldostools/webMAN-MOD/releases/tag/1.47.48)
+
 `libchdr` is required to be installed on the system. See [Installation](#libchdr) for more details how to do this.
 
 Just put your `.chd` images into necessary directory under server root: `PSXISO`, `PS2ISO` or even `PS3ISO`. 
@@ -55,7 +59,6 @@ In case of successful `libchdr` loading you will see a following log message on 
 ```
 Mar 23 00:00:00.000 INF libchdr loaded, enabling chd support
 ```
-PS3 will see such images as `.chd.iso` - server intentionally adds `.iso` extension to help console properly detecting a file type.
 
 Use [chdman](https://docs.mamedev.org/tools/chdman.html) tool maintained by MAME to compress your existing images.
 
@@ -233,6 +236,11 @@ $ go build -o ps3netsrv-go ./cmd/ps3netsrv-go/...
 
 > [!IMPORTANT]
 > Some platforms require extra build flags to be compiled successfully due to `purego` usage. See [support notes](https://github.com/ebitengine/purego/blob/main/README.md#support-notes) for details.
+
+To disable `purego` usage you can use `nopurego` build tag. I.e. 
+```bash
+$ go build -tags "nopurego" -o ps3netsrv-go ./cmd/ps3netsrv-go/...
+```
 
 If you're building for non-glibc Linux distro (like Alpine) or building on non-glibc distro for glibc-based distro (like on Alpine for Ubuntu) you need to properly specify `ldso` path via `GO_LDSO` environment variable:
 * `GO_LDSO=/lib/ld-musl-x86_64.so.1` for Alpine on x86_64 architecture

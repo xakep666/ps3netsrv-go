@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	isoExt = ".iso"
 	chdExt = ".chd"
 )
 
@@ -43,24 +42,12 @@ func (o *Opener) canProceed(path string) bool {
 		return false
 	}
 
-	ext1 := filepath.Ext(path)
-	if strings.EqualFold(ext1, chdExt) {
-		return true
-	}
-
-	ext2 := filepath.Ext(strings.TrimSuffix(path, ext1))
-
-	return strings.EqualFold(ext1, isoExt) && strings.EqualFold(ext2, chdExt)
+	return strings.EqualFold(filepath.Ext(path), chdExt)
 }
 
 func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler.File, error) {
-	// .chd file will be reported and requested as .chd.iso
 	if !o.canProceed(path) {
 		return nil, pkgfs.ErrTryNext
-	}
-
-	if ext := filepath.Ext(path); strings.EqualFold(ext, isoExt) {
-		path = strings.TrimSuffix(path, ext)
 	}
 
 	o.logger.DebugContext(ctx, "Trying to open CHD file", slog.String("path", path))
@@ -92,36 +79,14 @@ func (o *Opener) Open(ctx context.Context, fsys *pkgfs.FS, path string) (handler
 			slog.Int("sector_data_size", cdFile.SectorDataSize),
 			slog.Int64("sectors_count", cdFile.SectorsCount),
 		)
-		return &fileView{File: cdFile, openPath: path}, nil
+		return cdFile, nil
 	}
 
-	return &fileView{File: cf, openPath: path}, nil
+	return cf, nil
 }
 
 func (*Opener) Name() string {
 	return "chd"
-}
-
-type fileView struct {
-	handler.File
-	openPath string
-}
-
-func (c *fileView) Name() string {
-	// add .iso to make ps3 recognise it as disk image
-	return c.openPath + isoExt
-}
-
-func (c *fileView) Unwrap() handler.File {
-	return c.File
-}
-
-func (c *fileView) Stat() (fs.FileInfo, error) {
-	fi, err := c.File.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return &fakeNameFileStat{fi}, nil
 }
 
 func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.FileInfo, error) {
@@ -140,16 +105,4 @@ func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.File
 	defer cf.Close()
 
 	return cf.Stat()
-}
-
-type fakeNameFileStat struct {
-	fs.FileInfo
-}
-
-func (c *fakeNameFileStat) Name() string {
-	return c.FileInfo.Name() + isoExt
-}
-
-func (c *fakeNameFileStat) Unwrap() fs.FileInfo {
-	return c.FileInfo
 }

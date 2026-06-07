@@ -88,6 +88,10 @@ func (s *csoStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
+func (s *csoStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
+}
+
 func (f *File) Stat() (fs.FileInfo, error) {
 	fi, err := f.f.Stat()
 	if err != nil {
