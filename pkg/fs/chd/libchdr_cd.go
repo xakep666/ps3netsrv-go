@@ -93,6 +93,10 @@ func (s *cdFileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
+func (s *cdFileStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
+}
+
 func (f *CDFile) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err

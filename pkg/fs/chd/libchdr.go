@@ -336,11 +336,19 @@ func (s *fileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
 }
 
+func (s *fileStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
+}
+
 func (f *File) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err
 	}
-	return f.originalFileInfo, nil
+	return &fileStat{
+		FileInfo:   f.originalFileInfo,
+		header:     f.Header,
+		cdMetadata: f.CDMetadata,
+	}, nil
 }
 
 func (f *File) Close() error {

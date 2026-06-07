@@ -48,6 +48,10 @@ Powered by:
 * [zig cc](https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html) - C toolchain with fantastic cross-compilation abilities.
 
 #### Usage
+
+> [!IMPORTANT]
+> webMAN MOD version must be at least [1.47.48q](https://github.com/aldostools/webMAN-MOD/releases/tag/1.47.48)
+
 `libchdr` is required to be installed on the system. See [Installation](#libchdr) for more details how to do this.
 
 Just put your `.chd` images into necessary directory under server root: `PSXISO`, `PS2ISO` or even `PS3ISO`. 
@@ -55,7 +59,6 @@ In case of successful `libchdr` loading you will see a following log message on 
 ```
 Mar 23 00:00:00.000 INF libchdr loaded, enabling chd support
 ```
-PS3 will see such images as `.chd.iso` - server intentionally adds `.iso` extension to help console properly detecting a file type.
 
 Use [chdman](https://docs.mamedev.org/tools/chdman.html) tool maintained by MAME to compress your existing images.
 
