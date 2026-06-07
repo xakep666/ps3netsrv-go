@@ -10,17 +10,17 @@ import (
 type Reader struct {
 	io.Reader
 
-	cmd Command
+	cmd [16]byte
 }
 
 // ReadCommand reads a request command.
 func (r *Reader) ReadCommand() (OpCode, error) {
-	err := binary.Read(r, binary.BigEndian, &r.cmd)
+	_, err := io.ReadFull(r.Reader, r.cmd[:])
 	if err != nil {
-		return r.cmd.OpCode, fmt.Errorf("binary.Read failed: %w", err)
+		return 0, err
 	}
 
-	return r.cmd.OpCode, nil
+	return OpCode(binary.BigEndian.Uint16(r.cmd[:])), nil
 }
 
 // ReadOpenDir used for CmdOpenDir.
@@ -29,12 +29,12 @@ func (r *Reader) ReadOpenDir() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	dirPath, err := r.readStringN(cmd.DpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return dirPath, nil
@@ -45,12 +45,12 @@ func (r *Reader) ReadStatFile() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.FpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -61,12 +61,12 @@ func (r *Reader) ReadOpenFile() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.FpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -77,7 +77,7 @@ func (r *Reader) ReadReadFile() (bytesToRead uint32, offset uint64, err error) {
 
 	err = r.readCommandTail(&cmd)
 	if err != nil {
-		return 0, 0, fmt.Errorf("readCommandTail failed: %w", err)
+		return 0, 0, fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	return cmd.BytesToRead, cmd.Offset, nil
@@ -88,7 +88,7 @@ func (r *Reader) ReadReadFileCritical() (bytesToRead uint32, offset uint64, err 
 
 	err = r.readCommandTail(&cmd)
 	if err != nil {
-		return 0, 0, fmt.Errorf("readCommandTail failed: %w", err)
+		return 0, 0, fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	return cmd.BytesToRead, cmd.Offset, nil
@@ -99,7 +99,7 @@ func (r *Reader) ReadReadCD2048Critical() (startSector, sectorsToRead uint32, er
 
 	err = r.readCommandTail(&cmd)
 	if err != nil {
-		return 0, 0, fmt.Errorf("readCommandTail failed: %w", err)
+		return 0, 0, fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	return cmd.StartSector, cmd.SectorsToRead, nil
@@ -110,12 +110,12 @@ func (r *Reader) ReadCreateFile() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.FpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -126,7 +126,7 @@ func (r *Reader) ReadWriteFile() (io.Reader, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return nil, fmt.Errorf("readCommandTail failed: %w", err)
+		return nil, fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	return io.LimitReader(r.Reader, int64(cmd.BytesToWrite)), nil
@@ -137,12 +137,12 @@ func (r *Reader) ReadDeleteFile() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.FpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -153,12 +153,12 @@ func (r *Reader) ReadMkdir() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.DpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -169,12 +169,12 @@ func (r *Reader) ReadRmdir() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.DpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -184,12 +184,12 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 
 	err := r.readCommandTail(&cmd)
 	if err != nil {
-		return "", fmt.Errorf("readCommandTail failed: %w", err)
+		return "", fmt.Errorf("readCommandTail: %w", err)
 	}
 
 	filePath, err := r.readStringN(cmd.DpLen)
 	if err != nil {
-		return "", fmt.Errorf("readStringN failed: %w", err)
+		return "", fmt.Errorf("readStringN: %w", err)
 	}
 
 	return filePath, nil
@@ -197,9 +197,9 @@ func (r *Reader) ReadGetDirSize() (string, error) {
 
 // readCommandTail reads remaining data of command.
 func (r *Reader) readCommandTail(tail any) error {
-	_, err := binary.Decode(r.cmd.Data[:], binary.BigEndian, tail)
+	_, err := binary.Decode(r.cmd[2:], binary.BigEndian, tail)
 	if err != nil {
-		return fmt.Errorf("binary.Decode failed: %w", err)
+		return fmt.Errorf("binary.Decode: %w", err)
 	}
 
 	return nil
@@ -210,7 +210,7 @@ func (r *Reader) readStringN(size uint16) (string, error) {
 
 	_, err := io.CopyN(&buf, r, int64(size))
 	if err != nil {
-		return "", fmt.Errorf("io.ReadFull failed: %w", err)
+		return "", fmt.Errorf("io.ReadFull: %w", err)
 	}
 
 	return buf.String(), nil
