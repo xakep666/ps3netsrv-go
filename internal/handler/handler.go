@@ -292,7 +292,7 @@ func (h *Handler) HandleReadFile(ctx *Context, limit uint32, offset uint64, wr s
 		return fmt.Errorf("read failed: %w", err)
 	}
 
-	log.DebugContext(ctx, "Read file", slog.Int64("read", n))
+	log.DebugContext(ctx, "Read file completed", slog.Int64("read", n))
 
 	wr.WriteHeader(int32(n))
 	_, err = buf.WriteTo(wr)
