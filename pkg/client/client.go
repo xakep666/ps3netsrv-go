@@ -150,7 +150,7 @@ func (c *Client) ReadFile(ctx context.Context, bytesToRead uint32, offset uint64
 	if err = c.readResponse(ctx, &resp); err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
-	if resp.BytesRead < 0 {
+	if resp.BytesRead <= 0 {
 		return fmt.Errorf("received unsuccessful response")
 	}
 

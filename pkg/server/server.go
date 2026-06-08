@@ -220,18 +220,44 @@ func (s *Server[StateT]) handleOpenFile(ctx *Context[StateT]) error {
 }
 
 type readFileResponseWriter struct {
-	dataLength int32
-	upstream   io.Writer
+	dataLength    int32
+	dataLengthSet bool
+
+	dataLengthSent bool
+	written        int
+	upstream       *proto.Writer
 }
 
-func (w *readFileResponseWriter) WriteHeader(length int32) { w.dataLength = length }
+func (w *readFileResponseWriter) WriteHeader(length int32) {
+	w.dataLength = length
+	w.dataLengthSet = true
+}
 
 func (w *readFileResponseWriter) Write(p []byte) (n int, err error) {
-	if w.dataLength <= 0 {
+	if !w.dataLengthSet {
 		return 0, fmt.Errorf("WriteHeader wasn't called")
 	}
 
-	return w.upstream.Write(p)
+	if w.written+len(p) > int(w.dataLength) {
+		return 0, fmt.Errorf("trying to send more than specified by WriteHeader")
+	}
+
+	if !w.dataLengthSent {
+		err := w.upstream.SendReadFileResultLen(w.dataLength)
+		if err != nil {
+			return 0, err
+		}
+
+		w.dataLengthSent = true
+	}
+
+	n, err = w.upstream.Write(p)
+	if err != nil {
+		return n, err
+	}
+
+	w.written += n
+	return n, nil
 }
 
 func (s *Server[StateT]) handleReadFile(ctx *Context[StateT]) error {
@@ -240,10 +266,17 @@ func (s *Server[StateT]) handleReadFile(ctx *Context[StateT]) error {
 		return fmt.Errorf("read read file params failed: %w", err)
 	}
 
-	return s.Handler.HandleReadFile(ctx, toRead, off, &readFileResponseWriter{
-		dataLength: -1,
-		upstream:   ctx.wr.Writer,
-	})
+	wr := &readFileResponseWriter{upstream: &ctx.wr}
+	err = s.Handler.HandleReadFile(ctx, toRead, off, wr)
+	if err == nil {
+		return nil
+	}
+	if !wr.dataLengthSent {
+		s.Logger.ErrorContext(ctx, "ReadFile failed gracefully", logutil.ErrorAttr(err))
+		return ctx.wr.SendReadFileError()
+	}
+
+	return err
 }
 
 func (s *Server[StateT]) handleReadFileCritical(ctx *Context[StateT]) error {
