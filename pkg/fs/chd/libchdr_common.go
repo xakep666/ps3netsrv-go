@@ -1,12 +1,14 @@
 package chd
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io/fs"
 	"runtime"
+	"strconv"
 	"strings"
 	"structs"
 
@@ -135,6 +137,52 @@ type CDMetadata struct {
 	PregapType    string
 	PregapSubType string
 	Postgap       int
+}
+
+func ParseCDMetadata(tag []byte) (CDMetadata, error) {
+	var item CDMetadata
+	for len(tag) > 0 {
+		var rawItem []byte
+		rawItem, tag, _ = bytes.Cut(tag, []byte(" "))
+		key, value, _ := bytes.Cut(rawItem, []byte(":"))
+
+		switch string(key) {
+		case "TRACK":
+			x, err := strconv.Atoi(string(value))
+			if err != nil {
+				return CDMetadata{}, fmt.Errorf("TRACK: %w", err)
+			}
+			item.TrackNumber = x
+		case "TYPE":
+			item.Type = string(value)
+		case "SUBTYPE":
+			item.Subtype = string(value)
+		case "FRAMES":
+			x, err := strconv.Atoi(string(value))
+			if err != nil {
+				return CDMetadata{}, fmt.Errorf("FRAMES: %w", err)
+			}
+			item.Frames = x
+		case "PREGAP":
+			x, err := strconv.Atoi(string(value))
+			if err != nil {
+				return CDMetadata{}, fmt.Errorf("PREGAP: %w", err)
+			}
+			item.Pregap = x
+		case "PGTYPE":
+			item.PregapType = string(value)
+		case "PGSUB":
+			item.PregapSubType = string(value)
+		case "POSTGAP":
+			x, err := strconv.Atoi(string(value))
+			if err != nil {
+				return CDMetadata{}, fmt.Errorf("POSTGAP: %w", err)
+			}
+			item.Postgap = x
+		}
+	}
+
+	return item, nil
 }
 
 func (m *CDMetadata) IsAudio() bool {
@@ -291,8 +339,7 @@ func (c *CDFile) Unwrap() handler.File {
 
 type fileStat struct {
 	fs.FileInfo
-	header     *FileHeader
-	cdMetadata []CDMetadata
+	header *FileHeader
 }
 
 func (s *fileStat) Size() int64 {
@@ -301,4 +348,25 @@ func (s *fileStat) Size() int64 {
 
 func (s *fileStat) Mode() fs.FileMode {
 	return s.FileInfo.Mode() | fs.ModeIrregular
+}
+
+func (s *fileStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
+}
+
+type cdFileStat struct {
+	fs.FileInfo
+	size int64
+}
+
+func (s *cdFileStat) Size() int64 {
+	return s.size
+}
+
+func (s *cdFileStat) Mode() fs.FileMode {
+	return s.FileInfo.Mode() | fs.ModeIrregular
+}
+
+func (s *cdFileStat) Unwrap() fs.FileInfo {
+	return s.FileInfo
 }

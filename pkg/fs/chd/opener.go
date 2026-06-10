@@ -107,39 +107,73 @@ func (o *Opener) Stat(ctx context.Context, fsys *pkgfs.FS, path string) (fs.File
 		return nil, pkgfs.ErrTryNext
 	}
 
-	// if file is not cd-encoded we don't need to fully open it in libchdr
-	hdr, err := o.lib.ReadHeader(f)
+	defer f.Close()
+
+	fi, err := f.Stat()
 	if err != nil {
-		o.logger.DebugContext(ctx, "CHD read header failed, fallback to NewFile", logutil.ErrorAttr(err))
+		return nil, err
 	}
-	if err == nil && !hdr.IsCDCodesOnly() {
-		defer f.Close()
 
-		fi, err := f.Stat()
-		if err != nil {
-			return nil, err
-		}
+	hdr, err := ReadHeader(f)
+	if err != nil {
+		o.logger.DebugContext(ctx, "CHD read header failed", logutil.ErrorAttr(err))
+		return nil, pkgfs.ErrTryNext
+	}
 
+	if !hdr.IsCDCodesOnly() {
 		return &fileStat{
 			FileInfo: fi,
 			header:   hdr,
 		}, nil
 	}
 
-	cf, err := o.openFromFile(ctx, path, f)
-	switch {
-	case errors.Is(err, nil):
-		// pass
-	case errors.Is(err, errors.ErrUnsupported),
-		errors.Is(err, pkgfs.ErrTryNext):
-		return nil, pkgfs.ErrTryNext
-	default:
-		// report as try next file if open fails with unhandled error to not block directory listing
-		o.logger.ErrorContext(ctx, "CHD file open (NewFile) for stat failed, report as try next", logutil.ErrorAttr(err))
+	// for cd-encoded files we should parse metadata
+	mdIter, mdErr := IterateMetadata(f, hdr)
+	mdBuf := make([]byte, 512)
+	var (
+		totalFrames    int64
+		sectorDataSize int
+		idx            int
+	)
+	for hdr := range mdIter {
+		switch hdr.Tag {
+		case cdMetadataOldTag, cdMetadataTag, cdMetadataTag2:
+		default:
+			continue
+		}
+
+		n, err := hdr.ReadValue(f, mdBuf)
+		if err != nil {
+			o.logger.ErrorContext(ctx, "CHD read meta value failed", logutil.ErrorAttr(err), slog.Int("idx", idx))
+			return nil, pkgfs.ErrTryNext
+		}
+
+		md, err := ParseCDMetadata(mdBuf[:n])
+		if err != nil {
+			o.logger.ErrorContext(ctx, "CHD parse CD meta value failed", logutil.ErrorAttr(err), slog.Int("idx", idx))
+			return nil, pkgfs.ErrTryNext
+		}
+
+		totalFrames += int64(md.Frames)
+
+		if sectorDataSize == 0 {
+			sectorDataSize = md.SectorDataSize()
+			continue
+		}
+		if sectorDataSize != md.SectorDataSize() {
+			o.logger.ErrorContext(ctx, "inconsistent sector size across metadata", logutil.ErrorAttr(err))
+			return nil, pkgfs.ErrTryNext
+		}
+
+		idx++
+	}
+	if err = mdErr(); err != nil {
+		o.logger.ErrorContext(ctx, "CHD metadata iterate error", logutil.ErrorAttr(err))
 		return nil, pkgfs.ErrTryNext
 	}
 
-	defer cf.Close()
-
-	return cf.Stat()
+	return &cdFileStat{
+		FileInfo: fi,
+		size:     int64(sectorDataSize) * totalFrames,
+	}, nil
 }

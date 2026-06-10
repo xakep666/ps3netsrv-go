@@ -80,22 +80,6 @@ func (f *CDFile) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
-type cdFileStat struct {
-	fs.FileInfo
-	size int64
-}
-
-func (s *cdFileStat) Size() int64 {
-	return s.size
-}
-
-func (s *cdFileStat) Mode() fs.FileMode {
-	return s.FileInfo.Mode() | fs.ModeIrregular
-}
-
-func (s *cdFileStat) Unwrap() fs.FileInfo {
-	return s.FileInfo
-}
 
 func (f *CDFile) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
