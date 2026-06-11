@@ -3,13 +3,11 @@
 package chd
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"runtime"
-	"strconv"
 	"syscall"
 
 	"github.com/ebitengine/purego"
@@ -24,12 +22,6 @@ type fileMode int
 const (
 	fileModeRead = 1
 	fileModeRW   = 2
-)
-
-const (
-	cdMetadataOldTag = ('C' << 24) | ('H' << 16) | ('C' << 8) | 'D'
-	cdMetadataTag    = ('C' << 24) | ('H' << 16) | ('T' << 8) | 'R'
-	cdMetadataTag2   = ('C' << 24) | ('H' << 16) | ('T' << 8) | '2'
 )
 
 type LibCHDR struct {
@@ -151,46 +143,9 @@ func (l *LibCHDR) readMeatadata(handle fileHandle) ([]CDMetadata, error) {
 		}
 
 		tag := rawTag[:rawTagLen-1] // trim \0
-		var item CDMetadata
-		for len(tag) > 0 {
-			var rawItem []byte
-			rawItem, tag, _ = bytes.Cut(tag, []byte(" "))
-			key, value, _ := bytes.Cut(rawItem, []byte(":"))
-
-			switch string(key) {
-			case "TRACK":
-				x, err := strconv.Atoi(string(value))
-				if err != nil {
-					return nil, fmt.Errorf("idx %d: TRACK: %w", idx, err)
-				}
-				item.TrackNumber = x
-			case "TYPE":
-				item.Type = string(value)
-			case "SUBTYPE":
-				item.Subtype = string(value)
-			case "FRAMES":
-				x, err := strconv.Atoi(string(value))
-				if err != nil {
-					return nil, fmt.Errorf("idx %d: FRAMES: %w", idx, err)
-				}
-				item.Frames = x
-			case "PREGAP":
-				x, err := strconv.Atoi(string(value))
-				if err != nil {
-					return nil, fmt.Errorf("idx %d: PREGAP: %w", idx, err)
-				}
-				item.Pregap = x
-			case "PGTYPE":
-				item.PregapType = string(value)
-			case "PGSUB":
-				item.PregapSubType = string(value)
-			case "POSTGAP":
-				x, err := strconv.Atoi(string(value))
-				if err != nil {
-					return nil, fmt.Errorf("idx %d: POSTGAP: %w", idx, err)
-				}
-				item.Postgap = x
-			}
+		item, err := ParseCDMetadata(tag)
+		if err != nil {
+			return nil, fmt.Errorf("idx %d: %w", idx, err)
 		}
 
 		ret = append(ret, item)
@@ -322,32 +277,13 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	return offset, nil
 }
 
-type fileStat struct {
-	fs.FileInfo
-	header     *FileHeader
-	cdMetadata []CDMetadata
-}
-
-func (s *fileStat) Size() int64 {
-	return int64(s.header.LogicalBytes)
-}
-
-func (s *fileStat) Mode() fs.FileMode {
-	return s.FileInfo.Mode() | fs.ModeIrregular
-}
-
-func (s *fileStat) Unwrap() fs.FileInfo {
-	return s.FileInfo
-}
-
 func (f *File) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
 		return nil, err
 	}
 	return &fileStat{
-		FileInfo:   f.originalFileInfo,
-		header:     f.Header,
-		cdMetadata: f.CDMetadata,
+		FileInfo: f.originalFileInfo,
+		header:   f.Header,
 	}, nil
 }
 
