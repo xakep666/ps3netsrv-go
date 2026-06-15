@@ -45,7 +45,7 @@ archives:
         strip_parent: true
 dockers_v2:
   - images:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY_OWNER }}/ps3netsrv-go"
     tags:
       - "v{{ .Version }}"
       - "v{{ .Major }}.{{ .Minor }}"
