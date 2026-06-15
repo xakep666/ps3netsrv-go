@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/md5"
 	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -26,28 +27,15 @@ type chdInfoCmd struct {
 }
 
 func (c *chdInfoCmd) Run() error {
-	slogHandler := tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
-		Level:   slog.LevelDebug,
-		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
-	})
-
 	fi, err := c.Image.Stat()
 	if err != nil {
 		return err
 	}
 
-	lib, err := chd.NewLibCHDR(slog.New(slogHandler))
+	hdr, err := chd.ReadHeader(c.Image)
 	if err != nil {
 		return err
 	}
-
-	cf, err := lib.NewFile(c.Image)
-	if err != nil {
-		return err
-	}
-	defer cf.Close()
-
-	hdr := cf.Header
 
 	type kv struct {
 		name      string
@@ -57,11 +45,11 @@ func (c *chdInfoCmd) Run() error {
 	data := []kv{
 		{"Version", "%d", hdr.Version},
 		{"Hunks count", "%d", hdr.TotalHunks},
-		{"Bytes per hunk (uncompressed)", "0x%x", hdr.HunkBytes},
+		{"Bytes per hunk (uncompressed)", "%d", hdr.HunkBytes},
 		{"Uncompressed size", "%s", units.HumanSize(float64(hdr.LogicalBytes))},
 		{"On-disk size", "%s", units.HumanSize(float64(fi.Size()))},
 		{"Units count (uncompressed)", "%d", hdr.UnitCount},
-		{"Bytes per unit (uncompressed)", "0x%d", hdr.UnitBytes},
+		{"Bytes per unit (uncompressed)", "%d", hdr.UnitBytes},
 	}
 	if hdr.MD5 != ([md5.Size]byte{}) {
 		data = append(data, kv{"MD5", "%s", hex.EncodeToString(hdr.MD5[:])})
@@ -81,8 +69,28 @@ func (c *chdInfoCmd) Run() error {
 	for i, compressor := range hdr.Compression {
 		data = append(data, kv{fmt.Sprintf("Custom compressor %d", i), "%s", compressor})
 	}
-	for i := range cf.CDMetadata {
-		data = append(data, kv{fmt.Sprintf("Metadata %d", i), "%s", &cf.CDMetadata[i]})
+
+	mdIter, mdErr := chd.IterateMetadata(c.Image, hdr)
+	mdBuf := make([]byte, 512)
+	var i int
+	for hdr := range mdIter {
+		n, err := hdr.ReadValue(c.Image, mdBuf)
+		if err != nil {
+			return err
+		}
+
+		data = append(data, kv{"Metadata", "%s",
+			fmt.Sprintf("Tag=%q Index=%d Length=%d\n\t%s",
+				binary.BigEndian.AppendUint32(nil, hdr.Tag),
+				i,
+				hdr.Length,
+				mdBuf[:n],
+			),
+		})
+		i++
+	}
+	if err = mdErr(); err != nil {
+		return err
 	}
 
 	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
