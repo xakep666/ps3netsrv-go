@@ -3,14 +3,21 @@
 package osutil
 
 import (
+	"os"
 	"path/filepath"
 
 	"golang.org/x/sys/windows"
 )
 
 func LoadLibrary(name string) (handle uintptr, err error) {
-	if !filepath.IsAbs(name) && filepath.Ext(name) != ".dll" {
+	if filepath.Ext(name) != ".dll" {
 		name += ".dll"
+	}
+
+	if !filepath.IsAbs(name) {
+		if exe, exeErr := os.Executable(); exeErr == nil {
+			name = filepath.Join(filepath.Dir(exe), name)
+		}
 	}
 
 	h, err := windows.LoadLibraryEx(
