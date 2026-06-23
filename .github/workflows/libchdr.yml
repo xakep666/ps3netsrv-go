@@ -69,6 +69,7 @@ jobs:
             --target chdr
       - name: Install complied libs
         # 'tar' to preserve symlinks for versioned .so/.dylib files
+        # Windows runtime DLLs are left in the build tree instead of dist/lib
         run: |
           export BUILDDIR="${{ github.workspace }}/build"
           export DISTDIR="${{ github.workspace }}/dist"
