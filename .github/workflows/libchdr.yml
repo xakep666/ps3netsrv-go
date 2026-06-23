@@ -68,15 +68,19 @@ jobs:
           build-args: |
             --target chdr
       - name: Install complied libs
-        # 'tar' to preserve a symlinks
-        # unpack .a archives for windows (idk why cmake archives dll)
+        # 'tar' to preserve symlinks for versioned .so/.dylib files
+        # Windows runtime DLLs are left in the build tree instead of dist/lib
         run: |
+          export BUILDDIR="${{ github.workspace }}/build"
           export DISTDIR="${{ github.workspace }}/dist"
-          export LIBDIR="$DISTDIR/lib"
-          mkdir -p "$DISTDIR"
-          cmake --install "${{ github.workspace }}/build" --prefix "$DISTDIR" --strip
-          find "$LIBDIR" -type f -name '*.dll.a' -execdir sh -c 'ar x "{}" && rm "{}"' \;
-          (cd "$LIBDIR" && tar -cf "$DISTDIR/libchdr.tar" libchdr.*)
+          export STAGEDIR="$DISTDIR/stage"
+          mkdir -p "$STAGEDIR"
+          cmake --install "$BUILDDIR" --prefix "$DISTDIR" --strip
+          find "$DISTDIR/lib" \
+            \( -name 'libchdr.so*' -o -name 'libchdr*.dylib' \) \
+            \( -type f -o -type l \) -exec cp -P {} "$STAGEDIR/" \;
+          find "$BUILDDIR" -name 'libchdr.dll' -type f -exec cp {} "$STAGEDIR/" \;
+          (cd "$STAGEDIR" && tar -cf "$DISTDIR/libchdr.tar" libchdr.*)
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
