@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -260,6 +261,10 @@ func (sapp *serverApp) scanAndWarn() {
 }
 
 func (sapp *serverApp) setupRuntime() {
+	if runtime.GOOS != "linux" {
+		return
+	}
+
 	_, err := memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
 	switch {
 	case errors.Is(err, nil),
