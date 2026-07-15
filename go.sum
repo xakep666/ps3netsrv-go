@@ -47,6 +47,8 @@ github.com/mattn/go-isatty v0.0.23 h1:cYwCQTQf3HB6xUC+BtyCLZNr7IzbOmoZbmssVNzSyi
 github.com/mattn/go-isatty v0.0.23/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
 github.com/mattn/go-runewidth v0.0.24 h1:cpokDiIn0MGnhdHwuWnJBITySJ20QyNGnY2kR/ay2DU=
 github.com/mattn/go-runewidth v0.0.24/go.mod h1:XBkDxAl56ILZc9knddidhrOlY5R/pDhgLpndooCuJAs=
+github.com/mocheryl/slog-syslog v0.1.2 h1:mD/zXOXCrpMIGiv5nCPG48uuPpShXaFFm6LzKNwhejU=
+github.com/mocheryl/slog-syslog v0.1.2/go.mod h1:qu/7NCBUZWtiOcqani/wpr3ybZshCwb8d7dLwwLmOo4=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 h1:onHthvaw9LFnH4t2DcNVpwGmV9E1BkGknEliJkfwQj0=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58/go.mod h1:DXv8WO4yhMYhSNPKjeNKa5WY9YCIEBRbNzFFPJbWO6Y=
 github.com/pierrec/lz4/v4 v4.1.27 h1:+PhzhWDrjRj89TH2sw43nE3+4+W8lSxIuQadEHZyjUk=
@@ -66,6 +68,8 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/systemd/slog-journal v0.1.2 h1:oU30ghDjjSsQGBGQLzunPeURHe7fyh0Z99Ap5QeiMFY=
+github.com/systemd/slog-journal v0.1.2/go.mod h1:3ekGgwBlzs82itNN6iG6c3R1iEhkbrvBCpQHxine2L8=
 github.com/vbauerster/mpb/v8 v8.13.0 h1:uv5hrYmoVNy+3w4mjePgQXwmqUzLjhKX5p2+77CFfwo=
 github.com/vbauerster/mpb/v8 v8.13.0/go.mod h1:yY6DDD9c3idT01aDMzs98st5aotXIOXXUgPG3hAbAHk=
 golang.org/x/mod v0.37.0 h1:vF1DjpVEshcIqoEaauuHebaLk1O1forxjxBaVn884JQ=

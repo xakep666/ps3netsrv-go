@@ -51,6 +51,7 @@ type serverApp struct {
 	StrictRoot            bool             `help:"Stricter root protection from path traversal, referencing to outside symlinks, etc. Highly recommended if you plan to expose server outside of local network." env:"PS3NETSRV_STRICT_ROOT"`
 	// default value found during debugging
 	BufferSize int64 `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k" env:"PS3NETSRV_BUFFER_SIZE"`
+	SystemLog  bool  `help:"Send logs to system logger instead of stdout." env:"PS3NETSRV_SYSTEM_LOG"`
 }
 
 func (sapp *serverApp) setupLogger() {
@@ -60,20 +61,32 @@ func (sapp *serverApp) setupLogger() {
 	}
 
 	var slogHandler slog.Handler
-	if sapp.JSONLog {
-		slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: level,
-		})
-	} else {
-		slogHandler = tint.NewHandler(colorable.NewColorable(os.Stdout), &tint.Options{
-			Level:   level,
-			NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
-		})
+
+	var systemLogErr error
+	if sapp.SystemLog {
+		slogHandler, systemLogErr = osutil.SystemLogHandler(level)
+	}
+
+	if slogHandler == nil {
+		if sapp.JSONLog {
+			slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+				Level: level,
+			})
+		} else {
+			slogHandler = tint.NewTextHandler(colorable.NewColorable(os.Stdout), &tint.Options{
+				Level:   level,
+				NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
+			})
+		}
 	}
 
 	slogHandler = &handler.SlogContextHandler{Handler: slogHandler}
 
 	slog.SetDefault(slog.New(slogHandler))
+
+	if systemLogErr != nil {
+		slog.Warn("System logger init failed, fallback to stdout", logutil.ErrorAttr(systemLogErr))
+	}
 }
 
 func (sapp *serverApp) debugServer() error {
