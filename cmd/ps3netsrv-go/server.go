@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -94,7 +93,7 @@ func (sapp *serverApp) debugServer() error {
 		return nil
 	}
 
-	socket, err := listenTCP(sapp.DebugServerListenAddr)
+	socket, err := osutil.MakeListener(sapp.DebugServerListenAddr)
 	if err != nil {
 		return fmt.Errorf("debug server listen failed: %w", err)
 	}
@@ -131,7 +130,7 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 }
 
 func (sapp *serverApp) server() error {
-	socket, err := listenTCP(sapp.ListenAddr)
+	socket, err := osutil.MakeListener(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
@@ -304,24 +303,4 @@ func (sapp *serverApp) Run() error {
 	eg.Go(sapp.server)
 
 	return eg.Wait()
-}
-
-func listenTCP(addr string) (net.Listener, error) {
-	// if address is ipv4 we should pass "tcp4" net to listen only on ipv4 addresses
-
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil || host == "" {
-		return net.Listen("tcp", addr)
-	}
-
-	ipAddr, err := netip.ParseAddr(host)
-	if err != nil {
-		return net.Listen("tcp", addr)
-	}
-
-	if ipAddr.Is4() {
-		return net.Listen("tcp4", addr)
-	}
-
-	return net.Listen("tcp", addr)
 }
