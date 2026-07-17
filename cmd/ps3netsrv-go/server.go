@@ -138,10 +138,13 @@ func (sapp *serverApp) server() error {
 
 	sysRoot := fs.SystemRoot(fs.NewRelaxedSystemRoot(sapp.Root))
 	if sapp.StrictRoot {
-		sysRoot, err = os.OpenRoot(sapp.Root)
+		root, err := os.OpenRoot(sapp.Root)
 		if err != nil {
 			return fmt.Errorf("open root failed: %w", err)
 		}
+		// Wrap so large files (>2 GiB, i.e. every PS3 ISO) can be opened on
+		// 32-bit platforms; os.Root's openat omits O_LARGEFILE.
+		sysRoot = fs.NewStrictSystemRoot(root)
 	}
 
 	s := server.Server[handler.State]{
