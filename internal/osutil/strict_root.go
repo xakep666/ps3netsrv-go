@@ -1,4 +1,4 @@
-package fs
+package osutil
 
 import "os"
 
@@ -10,6 +10,9 @@ import "os"
 // on legacy 32-bit NAS hardware. This wrapper forwards O_LARGEFILE through
 // os.Root.OpenFile (which passes the flag verbatim to openat) while keeping all
 // of os.Root's symlink-safe, path-traversal-safe traversal.
+//
+// It satisfies pkg/fs.SystemRoot: Open/Create are overridden here, and the
+// embedded *os.Root supplies Stat, Remove and Mkdir.
 type StrictSystemRoot struct {
 	*os.Root
 }

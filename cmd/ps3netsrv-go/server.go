@@ -144,7 +144,7 @@ func (sapp *serverApp) server() error {
 		}
 		// Wrap so large files (>2 GiB, i.e. every PS3 ISO) can be opened on
 		// 32-bit platforms; os.Root's openat omits O_LARGEFILE.
-		sysRoot = fs.NewStrictSystemRoot(root)
+		sysRoot = osutil.NewStrictSystemRoot(root)
 	}
 
 	s := server.Server[handler.State]{
