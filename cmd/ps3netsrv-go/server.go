@@ -53,6 +53,27 @@ type serverApp struct {
 	SystemLog  bool  `help:"Send logs to system logger instead of stdout." env:"PS3NETSRV_SYSTEM_LOG"`
 }
 
+func (sapp *serverApp) Help() string {
+	return `Serve data using NETISO protocol from provided root directory.
+
+Flags '--listen-addr' and '--debug-server-listen-addr' supports following syntax:
+	* "fd:<id>" - listen on inherited (fork/exec) file descriptor
+	* "activated:<name>" - search inherited file descriptor by name in socket-activated environment, i.e. under "systemd-socket-activate"
+	* "unix:@abstract_name" - listen on abstract unix domain socket
+	* "unix:<path>[,0xxx]" - listen on unix domain socket at <path>. Useful if server is behind a proxy. 
+	Use optional ",0xxx" suffix to control socket permissions, i.e. "unix:/var/run/ps3netsrv-go.socket,0770" for ug+rwx permissions
+	* regular tcp listener otherwise
+
+For better security it's recommended to run with following options:
+	* '--strict-root' - prevents possible directory traversal
+	* '--client-whitelist' if you don't have firewall to prevent connections from unwanted networks
+
+It's also highly recommended to run server under non-root user with restricted access especially if '--allow-write' option is enabled.
+
+Option '--max-clients' may be used to limit amount of connected clients to control resources consumption.
+`
+}
+
 func (sapp *serverApp) setupLogger() {
 	level := sapp.LogLevel
 	if sapp.Debug {
