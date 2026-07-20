@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -8,10 +9,12 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -109,7 +112,7 @@ func (sapp *serverApp) setupLogger() {
 	}
 }
 
-func (sapp *serverApp) debugServer() error {
+func (sapp *serverApp) debugServer(ctx context.Context) error {
 	if sapp.DebugServerListenAddr == "" {
 		return nil
 	}
@@ -121,7 +124,12 @@ func (sapp *serverApp) debugServer() error {
 
 	slog.Info("Debug sever listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
-	return http.Serve(socket, nil)
+	server := new(http.Server)
+	context.AfterFunc(ctx, func() {
+		_ = server.Close()
+	})
+
+	return server.Serve(socket)
 }
 
 func (sapp *serverApp) warnIPRange(listener net.Listener) {
@@ -150,7 +158,7 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 	}
 }
 
-func (sapp *serverApp) server() error {
+func (sapp *serverApp) server(ctx context.Context) error {
 	socket, err := osutil.MakeListener(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
@@ -209,6 +217,10 @@ func (sapp *serverApp) server() error {
 	if sapp.ClientWhitelist != nil {
 		socket = iprange.FilterListener(socket, sapp.ClientWhitelist, false)
 	}
+
+	context.AfterFunc(ctx, func() {
+		_ = s.Close()
+	})
 
 	return s.Serve(socket)
 }
@@ -319,9 +331,29 @@ func (sapp *serverApp) Run() error {
 	sapp.warnRoot()
 	go sapp.scanAndWarn() // asynchronously to not delay server startup
 
-	var eg errgroup.Group
-	eg.Go(sapp.debugServer)
-	eg.Go(sapp.server)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	context.AfterFunc(ctx, func() {
+		slog.Info("Shutting down... Press Ctrl-C again for force-shutdown")
+		stop()
+	})
 
-	return eg.Wait()
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return sapp.debugServer(ctx)
+	})
+	eg.Go(func() error {
+		return sapp.server(ctx)
+	})
+
+	err := eg.Wait()
+	switch {
+	case errors.Is(err, nil):
+		return nil
+	case errors.Is(err, http.ErrServerClosed),
+		errors.Is(err, context.Canceled),
+		errors.Is(err, server.ErrServerClosed):
+		return nil // expected errors when server is being closed
+	default:
+		return err
+	}
 }
