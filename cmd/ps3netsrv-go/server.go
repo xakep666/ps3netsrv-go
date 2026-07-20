@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -51,6 +52,7 @@ type serverApp struct {
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')." env:"PS3NETSRV_CLIENT_WHITELIST"`
 	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations." env:"PS3NETSRV_ALLOW_WRITE"`
 	StrictRoot            bool             `help:"Stricter root protection from path traversal, referencing to outside symlinks, etc. Highly recommended if you plan to expose server outside of local network." env:"PS3NETSRV_STRICT_ROOT"`
+	ShutdownIdleTimeout   time.Duration    `help:"Automatically shutdown server if no clients connected for provided amount of time. Zero or negative value to disable." env:"PS3NETSRV_SHUTDOWN_IDLE_TIMEOUT"`
 	// default value found during debugging
 	BufferSize int64 `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k" env:"PS3NETSRV_BUFFER_SIZE"`
 	SystemLog  bool  `help:"Send logs to system logger instead of stdout." env:"PS3NETSRV_SYSTEM_LOG"`
@@ -74,6 +76,10 @@ For better security it's recommended to run with following options:
 It's also highly recommended to run server under non-root user with restricted access especially if '--allow-write' option is enabled.
 
 Option '--max-clients' may be used to limit amount of connected clients to control resources consumption.
+
+Consider setting '--shutdown-idle-timeout' if server will be started by socket-activation.
+When this option is set server will automatically shutdown itself if there are no connected clients duing provided period.
+It's also recommended to have '--read-timeout' set in this case but not required for local network.
 `
 }
 
@@ -112,7 +118,7 @@ func (sapp *serverApp) setupLogger() {
 	}
 }
 
-func (sapp *serverApp) debugServer(ctx context.Context) error {
+func (sapp *serverApp) debugServer(ctx context.Context, idt *idleTracker) error {
 	if sapp.DebugServerListenAddr == "" {
 		return nil
 	}
@@ -124,7 +130,13 @@ func (sapp *serverApp) debugServer(ctx context.Context) error {
 
 	slog.Info("Debug sever listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
-	server := new(http.Server)
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			idt.Connected() // prevent auto-shutdown if user fetches some data over http
+			defer idt.Disconnected()
+			http.DefaultServeMux.ServeHTTP(w, r)
+		}),
+	}
 	context.AfterFunc(ctx, func() {
 		_ = server.Close()
 	})
@@ -158,7 +170,7 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 	}
 }
 
-func (sapp *serverApp) server(ctx context.Context) error {
+func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
 	socket, err := osutil.MakeListener(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
@@ -206,6 +218,14 @@ func (sapp *serverApp) server(ctx context.Context) error {
 			),
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
+			OnConnect: func(ctx *handler.Context) error {
+				idt.Connected()
+				ctx.State.OnClose = func() error {
+					idt.Disconnected()
+					return nil
+				}
+				return nil
+			},
 		},
 		ReadTimeout: sapp.ReadTimeout,
 		Logger:      slog.Default(),
@@ -337,12 +357,21 @@ func (sapp *serverApp) Run() error {
 		stop()
 	})
 
+	ctx, idleCancel := context.WithCancel(ctx)
+	defer idleCancel()
+
+	idt := newIdleTracker(sapp.ShutdownIdleTimeout, func() {
+		slog.Info("Idle timeout expired, shutting down")
+		idleCancel()
+	})
+	defer idt.Cancel()
+
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		return sapp.debugServer(ctx)
+		return sapp.debugServer(ctx, idt)
 	})
 	eg.Go(func() error {
-		return sapp.server(ctx)
+		return sapp.server(ctx, idt)
 	})
 
 	err := eg.Wait()
@@ -356,4 +385,48 @@ func (sapp *serverApp) Run() error {
 	default:
 		return err
 	}
+}
+
+type idleTracker struct {
+	idleTimeout time.Duration
+
+	clientCount atomic.Int32
+	idleTimer   *time.Timer
+}
+
+func newIdleTracker(idleTimeout time.Duration, expiredCallback func()) *idleTracker {
+	if idleTimeout <= 0 {
+		return nil
+	}
+	return &idleTracker{
+		idleTimeout: idleTimeout,
+		idleTimer:   time.AfterFunc(idleTimeout, expiredCallback),
+	}
+}
+
+func (t *idleTracker) Connected() {
+	if t == nil {
+		return
+	}
+
+	if clients := t.clientCount.Add(1); clients > 0 {
+		t.idleTimer.Stop()
+	}
+}
+
+func (t *idleTracker) Disconnected() {
+	if t == nil {
+		return
+	}
+
+	if clients := t.clientCount.Add(-1); clients <= 0 {
+		t.idleTimer.Reset(t.idleTimeout)
+	}
+}
+
+func (t *idleTracker) Cancel() {
+	if t == nil {
+		return
+	}
+	t.idleTimer.Stop()
 }

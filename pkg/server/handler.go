@@ -42,6 +42,7 @@ type ReadFileResponseWriter interface {
 }
 
 type Handler[StateT any] interface {
+	Init(ctx *Context[StateT]) error
 	HandleOpenDir(ctx *Context[StateT], path string) (bool, error)
 	HandleReadDir(ctx *Context[StateT]) ([]fs.FileInfo, error)
 	HandleReadDirEntry(ctx *Context[StateT]) (fs.FileInfo, error)

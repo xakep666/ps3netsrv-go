@@ -91,7 +91,6 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 	log := s.Logger.With(logutil.StringerAttr("remote", conn.RemoteAddr()))
 
 	log.Info("Client connected")
-	defer log.Info("Client disconnected")
 
 	defer func() {
 		if err := ctx.Close(); err != nil {
@@ -101,6 +100,11 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 
 	defer conn.Close()
 
+	if err := s.Handler.Init(ctx); err != nil {
+		log.ErrorContext(ctx, "'Init' execute failed", logutil.ErrorAttr(err))
+		return
+	}
+
 	for {
 		if err := s.setConnReadDeadline(conn); err != nil {
 			log.ErrorContext(ctx, "Failed to set read deadline", logutil.ErrorAttr(err))
@@ -108,12 +112,20 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 		}
 
 		opCode, err := ctx.rd.ReadCommand()
+		var netErr net.Error
 		switch {
 		case errors.Is(err, nil):
 			// pass
 		case errors.Is(err, io.EOF), errors.Is(err, net.ErrClosed):
-			log.InfoContext(ctx, "Connection closed")
+			log.InfoContext(ctx, "Client disconnected: connection closed")
 			return
+		case errors.As(err, &netErr):
+			if netErr.Timeout() {
+				log.InfoContext(ctx, "Client disconnected: inactivity timeout")
+				return
+			}
+
+			fallthrough
 		default:
 			log.ErrorContext(ctx, "Read command failed", logutil.ErrorAttr(err))
 			return

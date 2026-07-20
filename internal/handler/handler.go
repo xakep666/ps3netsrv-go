@@ -28,6 +28,16 @@ type Handler struct {
 
 	Copier     *ioutil.Copier
 	AllowWrite bool
+	OnConnect  func(ctx *Context) error
+}
+
+func (h *Handler) Init(ctx *Context) error {
+	if h.OnConnect != nil {
+		if err := h.OnConnect(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (h *Handler) HandleOpenDir(ctx *Context, path string) (bool, error) {
