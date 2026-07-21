@@ -16,6 +16,7 @@ will run without any external library on target system.
 * Write protection. Enabled by default, use flag `--allow-write` or corresponding parameter.
 * TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
 * [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
+* [Socket activation](#socket-activation) - run service on-demand, only when client (console) connects.
 
 ### Supported ✅
 
@@ -105,6 +106,15 @@ Resulting `.zst` file may be put into necessary directory under server root: `PS
 
 PS3 will see such images as `.zst.iso` - server intentionally adds .iso extension to help console properly detecting a file type.
 
+## Socket activation
+This is the way to run service only if incomoming connection arrives. It may be useful if you want to lower resource usage because `ps3netsrv-go`
+consumes some CPU and RAM even in idle (without active clients). Key components that used to run service in socket activation mode:
+* Supervisor: [Systemd](https://www.freedesktop.org/software/systemd/man/latest/systemd.socket.html) on Linux, [Launchd](https://grokipedia.com/page/Launchd#socket-activation) on MacOS or any that can pass file descriptor in via fork/exec without accepting connection.
+* Ability accept connections using inherited listener. In `ps3netsrv-go` it's implemented by using `fd:<id>` or `activated:<name>` as listen address.
+* Optional auto-shutdown after some idle time. In `ps3netsrv-go` it's configured by `--shutdown-idle-timeout` flag or corresponding env variable/config entry.
+
+For example how to run under systemd see [Systemd service](#systemd-service).
+
 ## Installation
 This project shipped in a multiple ways for convenient installation:
 * Docker images: [`docker pull ghcr.io/xakep666/ps3netsrv-go`](https://ghcr.io/xakep666/ps3netsrv-go). `amd64` and `arm64` images are available.
@@ -184,11 +194,18 @@ In-container persistent volume is also available in `/srv/ps3data`.
 Deb, rpm and archlinux packages are shipped with systemd unit. Run
 ```bash
 $ systemctl daemon-reload
-$ systemctl enable ps3netsrv-go
+$ systemctl enable ps3netsrv-go@.service
 ```
 to enable automatic startup.
 
-Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`.
+Config file location is `/etc/ps3netsrv-go/config.ini`. Data location is `/srv/ps3data`. Service is running under separate user `ps3netsrv`. Systemd unit is templated, template is a config file name. I.e. for `ps3netsrv-go@myconfig.service` it will be `/etc/ps3netsrv-go/myconfig.ini`
+
+If you want to run service in socket-activation mode use
+```bash
+$ systemctl daemon-reload
+$ systemctl enable ps3netsrv-go.socket
+```
+By default it's configured to listen on port `0.0.0.0:38008` and auto-shutdown after 1 minute of idle. In this case config file path is `/etc/ps3netsrv-go/activated.ini`.
 
 ### Note for non-glibc Linux distros users
 Due to usage of `purego` all Linux executables in releases are dynamically linked ones. 
