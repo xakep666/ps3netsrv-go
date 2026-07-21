@@ -1,0 +1,13 @@
+[Unit]
+Description=Socket for PS3 Network Server (go version)
+Conflicts=ps3netsrv-go@config.service ps3netsrv-go@.service
+
+[Socket]
+# bind to ipv4 only because PS3 does not support ipv6
+ListenStream=0.0.0.0:38008
+FileDescriptorName=netiso
+Accept=no
+Service=ps3netsrv-go@config_socket.service
+
+[Install]
+WantedBy=sockets.target
