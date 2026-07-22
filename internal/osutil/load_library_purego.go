@@ -24,6 +24,10 @@ func LoadLibrary(name string) (handle uintptr, err error) {
 	return purego.Dlopen(name, purego.RTLD_NOW|purego.RTLD_LOCAL)
 }
 
+func LoadSystemLibrary(name string) (handle uintptr, err error) {
+	return purego.Dlopen(name, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+}
+
 func UnloadLibrary(handle uintptr) error {
 	return purego.Dlclose(handle)
 }

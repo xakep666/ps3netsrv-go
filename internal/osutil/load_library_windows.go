@@ -29,6 +29,15 @@ func LoadLibrary(name string) (handle uintptr, err error) {
 	return uintptr(h), err
 }
 
+func LoadSystemLibrary(name string) (handle uintptr, err error) {
+	dll := windows.NewLazySystemDLL(name)
+	if err := dll.Load(); err != nil {
+		return 0, err
+	}
+
+	return dll.Handle(), nil
+}
+
 func UnloadLibrary(handle uintptr) error {
 	return windows.FreeLibrary(windows.Handle(handle))
 }
