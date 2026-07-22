@@ -1,8 +1,10 @@
-package osutil
+package macoslibs
 
 import (
 	"sync"
 	"syscall"
+
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/dynamiclibs"
 )
 
 type LibXPC struct {
@@ -10,13 +12,13 @@ type LibXPC struct {
 }
 
 var getLibXPC = sync.OnceValues(func() (*LibXPC, error) {
-	handle, err := LoadSystemLibrary("/usr/lib/system/libxpc.dylib")
+	handle, err := dynamiclibs.LoadSystemLibrary("/usr/lib/system/libxpc.dylib")
 	if err != nil {
 		return nil, err
 	}
 
 	ret := new(LibXPC)
-	RegisterLibFunc(&ret.launchActivateSocket, handle, "launch_activate_socket")
+	dynamiclibs.RegisterLibFunc(&ret.launchActivateSocket, handle, "launch_activate_socket")
 
 	return ret, nil
 })

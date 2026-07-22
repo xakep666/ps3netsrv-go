@@ -1,6 +1,6 @@
 //go:build windows && !nopurego
 
-package osutil
+package dynamiclibs
 
 import (
 	"path/filepath"

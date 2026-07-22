@@ -1,6 +1,6 @@
 //go:build !linux
 
-package osutil
+package systemlog
 
 import (
 	"errors"

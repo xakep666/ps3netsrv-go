@@ -1,6 +1,6 @@
 //go:build !linux && !darwin
 
-package osutil
+package socketactivation
 
 import (
 	"errors"

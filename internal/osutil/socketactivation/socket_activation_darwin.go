@@ -1,4 +1,4 @@
-package osutil
+package socketactivation
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"syscall"
 	"unsafe"
+
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/macoslibs"
 )
 
 func ActivationListeners(name string) ([]net.Listener, error) {
@@ -28,12 +30,12 @@ func ActivationListeners(name string) ([]net.Listener, error) {
 func activationFiles(name string) ([]*os.File, error) {
 	const maxFDs = 1 << 20
 
-	libc, err := GetLibc()
+	libc, err := macoslibs.GetLibc()
 	if err != nil {
 		return nil, err
 	}
 
-	libxpc, err := GetLibXPC()
+	libxpc, err := macoslibs.GetLibXPC()
 	if err != nil {
 		return nil, err
 	}

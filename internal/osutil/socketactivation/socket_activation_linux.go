@@ -1,4 +1,4 @@
-package osutil
+package socketactivation
 
 import (
 	"fmt"

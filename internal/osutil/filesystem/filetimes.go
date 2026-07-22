@@ -1,4 +1,4 @@
-package osutil
+package filesystem
 
 import (
 	"context"

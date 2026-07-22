@@ -1,4 +1,4 @@
-package osutil
+package osuser
 
 import (
 	"golang.org/x/sys/windows"

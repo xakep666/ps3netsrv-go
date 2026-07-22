@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,7 +29,10 @@ import (
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-	"github.com/xakep666/ps3netsrv-go/internal/osutil"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/filesystem"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/osuser"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/socketactivation"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/systemlog"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/chd"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/cso"
@@ -93,7 +97,7 @@ func (sapp *serverApp) setupLogger() {
 
 	var systemLogErr error
 	if sapp.SystemLog {
-		slogHandler, systemLogErr = osutil.SystemLogHandler(level)
+		slogHandler, systemLogErr = systemlog.SystemLogHandler(level)
 	}
 
 	if slogHandler == nil {
@@ -123,7 +127,7 @@ func (sapp *serverApp) debugServer(ctx context.Context, idt *idleTracker) error 
 		return nil
 	}
 
-	socket, err := osutil.MakeListener(sapp.DebugServerListenAddr)
+	socket, err := makeListener(sapp.DebugServerListenAddr)
 	if err != nil {
 		return fmt.Errorf("debug server listen failed: %w", err)
 	}
@@ -171,7 +175,7 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 }
 
 func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
-	socket, err := osutil.MakeListener(sapp.ListenAddr)
+	socket, err := makeListener(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
@@ -197,7 +201,7 @@ func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
 		}
 		// Wrap so large files (>2 GiB, i.e. every PS3 ISO) can be opened on
 		// 32-bit platforms; os.Root's openat omits O_LARGEFILE.
-		sysRoot = osutil.NewStrictSystemRoot(root)
+		sysRoot = filesystem.NewStrictSystemRoot(root)
 	}
 
 	s := server.Server[handler.State]{
@@ -210,7 +214,7 @@ func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
 					seekablezstd.Opener{},
 				},
 				[]fs.FileWrapper{
-					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)
+					filesystem.FileTimesWrapper{}, // must be first to have original file here (system data needed)
 					iso3k3y.KeyExtractionFileWrapper{},
 					encryptediso.FileWrapper{},
 					iso3k3y.FileWrapper{},
@@ -246,7 +250,7 @@ func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
 }
 
 func (sapp *serverApp) warnRoot() {
-	if osutil.IsRoot() {
+	if osuser.IsRoot() {
 		if sapp.AllowWrite {
 			slog.Warn("Running as root/administrator with write access is dangerous! This may damage your data!")
 		} else {
@@ -429,4 +433,82 @@ func (t *idleTracker) Cancel() {
 		return
 	}
 	t.idleTimer.Stop()
+}
+
+// makeListener can create listener from multiple sources:
+// * if "addr" starts with "fd:" - from inherited file descriptor
+// * if "addr" starts with "activated:" - searches inherited file descriptor by name in socket-activated environment
+// * if "addr" starts with "unix:" - unix domain sockets (files or abstract), useful if server is behind a proxy
+// * regular tcp listener otherwise
+func makeListener(addr string) (net.Listener, error) {
+	const (
+		fdPrefix        = "fd:"
+		activatedPrefix = "activated:"
+		unixPrefix      = "unix:"
+	)
+
+	switch {
+	case strings.HasPrefix(addr, fdPrefix): // listen on inherited file descriptor
+		fd, err := strconv.ParseUint(addr[len(fdPrefix):], 10, strconv.IntSize)
+		if err != nil {
+			return nil, fmt.Errorf("parse fd: %w", err)
+		}
+
+		f := os.NewFile(uintptr(fd), "")
+		defer f.Close() // can be safely closed here because FileListener dups fd with necessary opts
+
+		return net.FileListener(f)
+	case strings.HasPrefix(addr, activatedPrefix):
+		// search a "named" file descriptor if we're inside socket-activated environment
+		listeners, err := socketactivation.ActivationListeners(addr[len(activatedPrefix):])
+		if err != nil {
+			return nil, fmt.Errorf("get activated listeners: %w", err)
+		}
+
+		if len(listeners) == 0 {
+			return nil, fmt.Errorf("no activated listeners found by name")
+		}
+
+		return listeners[0], nil
+	case strings.HasPrefix(addr, unixPrefix):
+		path := addr[len(unixPrefix):]
+		if strings.HasPrefix(path, "@") {
+			// abstract unix socket
+			return net.Listen("unix", path)
+		}
+
+		path, perm, _ := strings.Cut(path, ",") // get permissions
+		_ = os.Remove(path)                     // remove existing file
+		lis, err := net.Listen("unix", path)
+		if err != nil {
+			return nil, err
+		}
+
+		if parsedPerm, err := strconv.ParseUint(perm, 8, 32); err == nil {
+			// apply permissions to file
+			if err = os.Chmod(path, os.FileMode(parsedPerm)); err != nil {
+				return nil, fmt.Errorf("chmod: %w", err)
+			}
+		}
+
+		return lis, nil
+	}
+
+	// if address is ipv4 we should pass "tcp4" net to listen only on ipv4 addresses
+
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return net.Listen("tcp", addr)
+	}
+
+	ipAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return net.Listen("tcp", addr)
+	}
+
+	if ipAddr.Is4() {
+		return net.Listen("tcp4", addr)
+	}
+
+	return net.Listen("tcp", addr)
 }

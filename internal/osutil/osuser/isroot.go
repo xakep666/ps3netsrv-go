@@ -1,6 +1,6 @@
 //go:build !windows
 
-package osutil
+package osuser
 
 import "os/user"
 

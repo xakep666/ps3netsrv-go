@@ -1,8 +1,10 @@
-package osutil
+package macoslibs
 
 import (
 	"sync"
 	"unsafe"
+
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/dynamiclibs"
 )
 
 type Libc struct {
@@ -10,13 +12,13 @@ type Libc struct {
 }
 
 var getLibc = sync.OnceValues(func() (*Libc, error) {
-	handle, err := LoadSystemLibrary("/usr/lib/libSystem.B.dylib")
+	handle, err := dynamiclibs.LoadSystemLibrary("/usr/lib/libSystem.B.dylib")
 	if err != nil {
 		return nil, err
 	}
 
 	ret := new(Libc)
-	RegisterLibFunc(&ret.free, handle, "free")
+	dynamiclibs.RegisterLibFunc(&ret.free, handle, "free")
 
 	return ret, nil
 })
