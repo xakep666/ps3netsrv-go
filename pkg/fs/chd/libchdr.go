@@ -1,5 +1,3 @@
-//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
-
 package chd
 
 import (
@@ -9,8 +7,6 @@ import (
 	"log/slog"
 	"runtime"
 	"syscall"
-
-	"github.com/ebitengine/purego"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
@@ -47,13 +43,13 @@ func NewLibCHDR(logger *slog.Logger) (*LibCHDR, error) {
 		log:       logger,
 		callbacks: newFileCallbacks(logger),
 	}
-	purego.RegisterLibFunc(&ret.openFileCallbacks, handle, "chd_open_core_file_callbacks")
-	purego.RegisterLibFunc(&ret.close, handle, "chd_close")
-	purego.RegisterLibFunc(&ret.getHeader, handle, "chd_get_header")
-	purego.RegisterLibFunc(&ret.getMetadata, handle, "chd_get_metadata")
-	purego.RegisterLibFunc(&ret.readHeaderCallbacks, handle, "chd_read_header_core_file_callbacks")
-	purego.RegisterLibFunc(&ret.read, handle, "chd_read")
-	purego.RegisterLibFunc(&ret.errorString, handle, "chd_error_string")
+	osutil.RegisterLibFunc(&ret.openFileCallbacks, handle, "chd_open_core_file_callbacks")
+	osutil.RegisterLibFunc(&ret.close, handle, "chd_close")
+	osutil.RegisterLibFunc(&ret.getHeader, handle, "chd_get_header")
+	osutil.RegisterLibFunc(&ret.getMetadata, handle, "chd_get_metadata")
+	osutil.RegisterLibFunc(&ret.readHeaderCallbacks, handle, "chd_read_header_core_file_callbacks")
+	osutil.RegisterLibFunc(&ret.read, handle, "chd_read")
+	osutil.RegisterLibFunc(&ret.errorString, handle, "chd_error_string")
 
 	runtime.AddCleanup(ret, func(h uintptr) {
 		if err := osutil.UnloadLibrary(h); err != nil {

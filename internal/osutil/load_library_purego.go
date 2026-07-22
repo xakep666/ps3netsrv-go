@@ -9,6 +9,8 @@ import (
 	"github.com/ebitengine/purego"
 )
 
+type CDecl = purego.CDecl
+
 func LoadLibrary(name string) (handle uintptr, err error) {
 	dlExt := ".so"
 	if runtime.GOOS == "darwin" {
@@ -24,4 +26,12 @@ func LoadLibrary(name string) (handle uintptr, err error) {
 
 func UnloadLibrary(handle uintptr) error {
 	return purego.Dlclose(handle)
+}
+
+func RegisterLibFunc(fptr any, handle uintptr, name string) {
+	purego.RegisterLibFunc(fptr, handle, name)
+}
+
+func NewCallback(fptr any) uintptr {
+	return purego.NewCallback(fptr)
 }

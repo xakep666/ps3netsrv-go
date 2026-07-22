@@ -1,5 +1,3 @@
-//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
-
 package chd
 
 import (
@@ -10,8 +8,6 @@ import (
 	"structs"
 	"syscall"
 	"unsafe"
-
-	"github.com/ebitengine/purego"
 
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
@@ -31,7 +27,7 @@ type fileCallbacks struct {
 func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 	// osutil.Handle used to propagate a Go value through C code without it's being garbage-collected
 	return &fileCallbacks{
-		fsize: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle) uint64 {
+		fsize: osutil.NewCallback(func(_ osutil.CDecl, userdata osutil.Handle) uint64 {
 			f := userdata.Value().(handler.File)
 			ret, err := f.Seek(0, io.SeekEnd)
 			if err != nil {
@@ -40,7 +36,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 			}
 			return uint64(ret)
 		}),
-		fread: purego.NewCallback(func(_ purego.CDecl, target *byte, size, count int64, userdata osutil.Handle) int64 {
+		fread: osutil.NewCallback(func(_ osutil.CDecl, target *byte, size, count int64, userdata osutil.Handle) int64 {
 			f := userdata.Value().(handler.File)
 			n, err := f.Read(unsafe.Slice(target, count*size))
 			switch {
@@ -53,7 +49,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 				return int64(extractSysErrCode(err))
 			}
 		}),
-		fclose: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle) int {
+		fclose: osutil.NewCallback(func(_ osutil.CDecl, userdata osutil.Handle) int {
 			defer userdata.Delete()
 
 			f := userdata.Value().(handler.File)
@@ -64,7 +60,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 			}
 			return 0
 		}),
-		fseek: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle, offset int64, whence int) int {
+		fseek: osutil.NewCallback(func(_ osutil.CDecl, userdata osutil.Handle, offset int64, whence int) int {
 			f := userdata.Value().(handler.File)
 			_, err := f.Seek(offset, whence)
 			if err != nil {

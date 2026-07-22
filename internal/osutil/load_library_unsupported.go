@@ -4,10 +4,20 @@ package osutil
 
 import "errors"
 
+type CDecl struct{}
+
 func LoadLibrary(name string) (uintptr, error) {
 	return 0, errors.ErrUnsupported
 }
 
 func UnloadLibrary(uintptr) error {
 	return errors.ErrUnsupported
+}
+
+func RegisterLibFunc(fptr any, handle uintptr, name string) {
+	panic(errors.ErrUnsupported)
+}
+
+func NewCallback(fptr any) uintptr {
+	panic(errors.ErrUnsupported)
 }

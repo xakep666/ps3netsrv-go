@@ -1,12 +1,15 @@
-//go:build windows
+//go:build windows && !nopurego
 
 package osutil
 
 import (
 	"path/filepath"
 
+	"github.com/ebitengine/purego"
 	"golang.org/x/sys/windows"
 )
+
+type CDecl = purego.CDecl
 
 func LoadLibrary(name string) (handle uintptr, err error) {
 	if filepath.Ext(name) != ".dll" {
@@ -28,4 +31,12 @@ func LoadLibrary(name string) (handle uintptr, err error) {
 
 func UnloadLibrary(handle uintptr) error {
 	return windows.FreeLibrary(windows.Handle(handle))
+}
+
+func RegisterLibFunc(fptr any, handle uintptr, name string) {
+	purego.RegisterLibFunc(fptr, handle, name)
+}
+
+func NewCallback(fptr any) uintptr {
+	return purego.NewCallback(fptr)
 }

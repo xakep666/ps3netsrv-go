@@ -1,5 +1,3 @@
-//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
-
 package chd
 
 import (
@@ -79,7 +77,6 @@ func (f *CDFile) Seek(offset int64, whence int) (int64, error) {
 	f.offset = offset
 	return offset, nil
 }
-
 
 func (f *CDFile) Stat() (fs.FileInfo, error) {
 	if err := f.init(); err != nil {
