@@ -113,7 +113,7 @@ consumes some CPU and RAM even in idle (without active clients). Key components 
 * Ability accept connections using inherited listener. In `ps3netsrv-go` it's implemented by using `fd:<id>` or `activated:<name>` as listen address.
 * Optional auto-shutdown after some idle time. In `ps3netsrv-go` it's configured by `--shutdown-idle-timeout` flag or corresponding env variable/config entry.
 
-For example how to run under systemd see [Systemd service](#systemd-service).
+For example how to run under systemd see [Systemd service](#systemd-service) or [MacOS Launchd service](#macos-launchd-service).
 
 ## Installation
 This project shipped in a multiple ways for convenient installation:
@@ -206,6 +206,23 @@ $ systemctl daemon-reload
 $ systemctl enable ps3netsrv-go.socket
 ```
 By default it's configured to listen on port `0.0.0.0:38008` and auto-shutdown after 1 minute of idle. In this case config file path is `/etc/ps3netsrv-go/activated.ini`.
+
+### MacOS Launchd service
+
+Launchd (system supervisor on macOS) also supports socket-activation and there is a `.plist` manifest in this repo to run service in socket-activation mode.
+
+> [!IMPORTANT]
+> `purego` is required to run ps3netsrv-go in socket-activation mode on macOS. So if you used `nopurego` tag during build service won't start.
+
+Currently it's you need to install service manually. Installation steps:
+1. [Build an executable](#building) or get a [release](https://github.com/xakep666/ps3netsrv-go/releases)
+2. Copy `ps3netsrv-go` executable to `/usr/local/bin`
+3. Create a root layout: `cp -R <project-root>/package/layout ~/ps3data`
+4. Place config: `mkdir -p "~/Library/Application Support/ps3netsrv-go" && cp <project-root>/package/macos/config.ini "~/Library/Application Support/ps3netsrv-go"`
+5. Place launchd manifest: `cp <project-root>/package/macos/com.xakep666.ps3netsrv-go.plist ~/Library/LaunchAgents`
+6. Enable launchd service: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.xakep666.ps3netsrv-go.plist`
+7. Verify if it's enabled: `launchctl print gui/$(id -u)/com.xakep666.ps3netsrv-go` (should print service details)
+8. Done!
 
 ### Note for non-glibc Linux distros users
 Due to usage of `purego` all Linux executables in releases are dynamically linked ones. 
