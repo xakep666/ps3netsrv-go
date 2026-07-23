@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
+	"github.com/alecthomas/kong"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -350,6 +351,14 @@ func (sapp *serverApp) setupRuntime() {
 }
 
 func (sapp *serverApp) Run() error {
+	// do this manually because type:existingdir flags can't be read from config
+	newRoot := kong.ExpandPath(sapp.Root)
+	di, err := os.Stat(newRoot)
+	if err != nil || !di.IsDir() {
+		return fmt.Errorf("root %q is not exists or not a directory", sapp.Root)
+	}
+	sapp.Root = newRoot
+
 	sapp.setupLogger()
 	sapp.setupRuntime()
 	sapp.warnRoot()
@@ -378,7 +387,7 @@ func (sapp *serverApp) Run() error {
 		return sapp.server(ctx, idt)
 	})
 
-	err := eg.Wait()
+	err = eg.Wait()
 	switch {
 	case errors.Is(err, nil):
 		return nil
