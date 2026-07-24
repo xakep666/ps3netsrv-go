@@ -11,6 +11,7 @@
         <string>/usr/local/bin/ps3netsrv-go</string>
         <string>server</string>
         <string>--listen-addr=activated:NetISO</string>
+        <string>--system-log</string>
     </array>
     <key>Sockets</key>
     <dict>
