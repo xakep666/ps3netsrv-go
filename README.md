@@ -65,7 +65,7 @@ Use [chdman](https://docs.mamedev.org/tools/chdman.html) tool maintained by MAME
 
 #### Compatibility
 * PS1 (PSX) images: *tested* and **working** ✅ (kudos to @turbosagat for assistance)
-* PS2 images: *tested* and **not working** ❌ (to be investigated in https://github.com/xakep666/ps3netsrv-go/issues/31)
+* PS2 images: *tested* and **working** ✅ (copies whole image to console without streaming, expected behaviour)
 * PS3 images: *untested* ❔ (technically should work because uses same codebase as PS1 images)
 
 #### Limitations
