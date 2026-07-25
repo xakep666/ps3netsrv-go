@@ -108,9 +108,27 @@ func translateArgs(args []string) []string {
 		return args
 	}
 
-	if st, err := os.Stat(args[0]); err == nil && st.IsDir() {
-		return append([]string{"server", "--root=" + args[0]}, args[1:]...)
+	// simulate current ps3netsrv behaviour
+	dir := args[0]
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		sfoPath := filepath.Join(dir, "PS3_GAME", "PARAM.SFO")
+		if st, err = os.Stat(sfoPath); err == nil && !st.IsDir() {
+			// if we found PARAM.SFO file we should make ps3-mode iso
+			return []string{"makeiso", "--ps3-mode", dir, dir + getIsoExt(dir)}
+		}
+		return []string{"makeiso", dir, dir + getIsoExt(dir)}
 	}
 
 	return args
+}
+
+func getIsoExt(name string) string {
+	// if first and last letters are capital we want also capital .ISO extension
+	if name[0] < 'A' || name[0] > 'Z' {
+		return ".iso"
+	}
+	if name[len(name)-1] < 'A' || name[len(name)-1] > 'Z' {
+		return ".iso"
+	}
+	return ".ISO"
 }

@@ -27,6 +27,7 @@ will run without any external library on target system.
 * Virtual ISO: games in directory format (residing in `GAMES`).
 * 3k3y/Redump images: if iso path is `<root>/PS3ISO/game.iso` than dedicated key expected at `<root>/PS3ISO/game.dkey` or at `<root>/REDKEY/game.dkey`
 * "Search remote subfolders" WebMAN feature
+* Drag-N-Drop directory to an executable to create an iso image like in [original ps3netsrv](https://github.com/aldostools/webMAN-MOD/wiki/~-PS3-NET-Server#makeiso)
 
 ### Unsupported ❌
 
