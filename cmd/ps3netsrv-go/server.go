@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,13 +10,17 @@ import (
 	_ "net/http/pprof"
 	"net/netip"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
+	"github.com/alecthomas/kong"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -25,7 +30,10 @@ import (
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/ioutil"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-	"github.com/xakep666/ps3netsrv-go/internal/osutil"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/filesystem"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/osuser"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/socketactivation"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/systemlog"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/chd"
 	"github.com/xakep666/ps3netsrv-go/pkg/fs/cso"
@@ -49,8 +57,35 @@ type serverApp struct {
 	ClientWhitelist       *iprange.IPRange `help:"Optional client IP whitelist. Formats: single IPv4/v6 ('192.168.0.2'), IPv4/v6 CIDR ('192.168.0.1/24'), IPv4 + subnet mask ('192.168.0.1/255.255.255.0), IPv4/IPv6 range ('192.168.0.1-192.168.0.255')." env:"PS3NETSRV_CLIENT_WHITELIST"`
 	AllowWrite            bool             `help:"Allow writing/modifying filesystem operations." env:"PS3NETSRV_ALLOW_WRITE"`
 	StrictRoot            bool             `help:"Stricter root protection from path traversal, referencing to outside symlinks, etc. Highly recommended if you plan to expose server outside of local network." env:"PS3NETSRV_STRICT_ROOT"`
+	ShutdownIdleTimeout   time.Duration    `help:"Automatically shutdown server if no clients connected for provided amount of time. Zero or negative value to disable." env:"PS3NETSRV_SHUTDOWN_IDLE_TIMEOUT"`
 	// default value found during debugging
 	BufferSize int64 `help:"Size of buffer for data transfer. Change it only if you know what you doing." type:"binsize" default:"64k" env:"PS3NETSRV_BUFFER_SIZE"`
+	SystemLog  bool  `help:"Send logs to system logger instead of stdout." env:"PS3NETSRV_SYSTEM_LOG"`
+}
+
+func (sapp *serverApp) Help() string {
+	return `Serve data using NETISO protocol from provided root directory.
+
+Flags '--listen-addr' and '--debug-server-listen-addr' supports following syntax:
+	* "fd:<id>" - listen on inherited (fork/exec) file descriptor
+	* "activated:<name>" - search inherited file descriptor by name in socket-activated environment, i.e. under "systemd-socket-activate"
+	* "unix:@abstract_name" - listen on abstract unix domain socket
+	* "unix:<path>[,0xxx]" - listen on unix domain socket at <path>. Useful if server is behind a proxy. 
+	Use optional ",0xxx" suffix to control socket permissions, i.e. "unix:/var/run/ps3netsrv-go.socket,0770" for ug+rwx permissions
+	* regular tcp listener otherwise
+
+For better security it's recommended to run with following options:
+	* '--strict-root' - prevents possible directory traversal
+	* '--client-whitelist' if you don't have firewall to prevent connections from unwanted networks
+
+It's also highly recommended to run server under non-root user with restricted access especially if '--allow-write' option is enabled.
+
+Option '--max-clients' may be used to limit amount of connected clients to control resources consumption.
+
+Consider setting '--shutdown-idle-timeout' if server will be started by socket-activation.
+When this option is set server will automatically shutdown itself if there are no connected clients duing provided period.
+It's also recommended to have '--read-timeout' set in this case but not required for local network.
+`
 }
 
 func (sapp *serverApp) setupLogger() {
@@ -60,35 +95,58 @@ func (sapp *serverApp) setupLogger() {
 	}
 
 	var slogHandler slog.Handler
-	if sapp.JSONLog {
-		slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: level,
-		})
-	} else {
-		slogHandler = tint.NewHandler(colorable.NewColorable(os.Stdout), &tint.Options{
-			Level:   level,
-			NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
-		})
+
+	var systemLogErr error
+	if sapp.SystemLog {
+		slogHandler, systemLogErr = systemlog.SystemLogHandler(level)
+	}
+
+	if slogHandler == nil {
+		if sapp.JSONLog {
+			slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+				Level: level,
+			})
+		} else {
+			slogHandler = tint.NewTextHandler(colorable.NewColorable(os.Stdout), &tint.Options{
+				Level:   level,
+				NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
+			})
+		}
 	}
 
 	slogHandler = &handler.SlogContextHandler{Handler: slogHandler}
 
 	slog.SetDefault(slog.New(slogHandler))
+
+	if systemLogErr != nil {
+		slog.Warn("System logger init failed, fallback to stdout", logutil.ErrorAttr(systemLogErr))
+	}
 }
 
-func (sapp *serverApp) debugServer() error {
+func (sapp *serverApp) debugServer(ctx context.Context, idt *idleTracker) error {
 	if sapp.DebugServerListenAddr == "" {
 		return nil
 	}
 
-	socket, err := listenTCP(sapp.DebugServerListenAddr)
+	socket, err := makeListener(sapp.DebugServerListenAddr)
 	if err != nil {
 		return fmt.Errorf("debug server listen failed: %w", err)
 	}
 
 	slog.Info("Debug sever listening...", "addr", logutil.ListenAddressValue(socket.Addr()))
 
-	return http.Serve(socket, nil)
+	server := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			idt.Connected() // prevent auto-shutdown if user fetches some data over http
+			defer idt.Disconnected()
+			http.DefaultServeMux.ServeHTTP(w, r)
+		}),
+	}
+	context.AfterFunc(ctx, func() {
+		_ = server.Close()
+	})
+
+	return server.Serve(socket)
 }
 
 func (sapp *serverApp) warnIPRange(listener net.Listener) {
@@ -117,8 +175,8 @@ func (sapp *serverApp) warnIPRange(listener net.Listener) {
 	}
 }
 
-func (sapp *serverApp) server() error {
-	socket, err := listenTCP(sapp.ListenAddr)
+func (sapp *serverApp) server(ctx context.Context, idt *idleTracker) error {
+	socket, err := makeListener(sapp.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("listen failed: %w", err)
 	}
@@ -144,7 +202,7 @@ func (sapp *serverApp) server() error {
 		}
 		// Wrap so large files (>2 GiB, i.e. every PS3 ISO) can be opened on
 		// 32-bit platforms; os.Root's openat omits O_LARGEFILE.
-		sysRoot = osutil.NewStrictSystemRoot(root)
+		sysRoot = filesystem.NewStrictSystemRoot(root)
 	}
 
 	s := server.Server[handler.State]{
@@ -157,7 +215,7 @@ func (sapp *serverApp) server() error {
 					seekablezstd.Opener{},
 				},
 				[]fs.FileWrapper{
-					osutil.FileTimesWrapper{}, // must be first to have original file here (system data needed)
+					filesystem.FileTimesWrapper{}, // must be first to have original file here (system data needed)
 					iso3k3y.KeyExtractionFileWrapper{},
 					encryptediso.FileWrapper{},
 					iso3k3y.FileWrapper{},
@@ -165,6 +223,14 @@ func (sapp *serverApp) server() error {
 			),
 			AllowWrite: sapp.AllowWrite,
 			Copier:     cop,
+			OnConnect: func(ctx *handler.Context) error {
+				idt.Connected()
+				ctx.State.OnClose = func() error {
+					idt.Disconnected()
+					return nil
+				}
+				return nil
+			},
 		},
 		ReadTimeout: sapp.ReadTimeout,
 		Logger:      slog.Default(),
@@ -177,11 +243,15 @@ func (sapp *serverApp) server() error {
 		socket = iprange.FilterListener(socket, sapp.ClientWhitelist, false)
 	}
 
+	context.AfterFunc(ctx, func() {
+		_ = s.Close()
+	})
+
 	return s.Serve(socket)
 }
 
 func (sapp *serverApp) warnRoot() {
-	if osutil.IsRoot() {
+	if osuser.IsRoot() {
 		if sapp.AllowWrite {
 			slog.Warn("Running as root/administrator with write access is dangerous! This may damage your data!")
 		} else {
@@ -281,19 +351,158 @@ func (sapp *serverApp) setupRuntime() {
 }
 
 func (sapp *serverApp) Run() error {
+	// do this manually because type:existingdir flags can't be read from config
+	newRoot := kong.ExpandPath(sapp.Root)
+	di, err := os.Stat(newRoot)
+	if err != nil || !di.IsDir() {
+		return fmt.Errorf("root %q is not exists or not a directory", sapp.Root)
+	}
+	sapp.Root = newRoot
+
 	sapp.setupLogger()
 	sapp.setupRuntime()
 	sapp.warnRoot()
 	go sapp.scanAndWarn() // asynchronously to not delay server startup
 
-	var eg errgroup.Group
-	eg.Go(sapp.debugServer)
-	eg.Go(sapp.server)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	context.AfterFunc(ctx, func() {
+		slog.Info("Shutting down... Press Ctrl-C again for force-shutdown")
+		stop()
+	})
 
-	return eg.Wait()
+	ctx, idleCancel := context.WithCancel(ctx)
+	defer idleCancel()
+
+	idt := newIdleTracker(sapp.ShutdownIdleTimeout, func() {
+		slog.Info("Idle timeout expired, shutting down")
+		idleCancel()
+	})
+	defer idt.Cancel()
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return sapp.debugServer(ctx, idt)
+	})
+	eg.Go(func() error {
+		return sapp.server(ctx, idt)
+	})
+
+	err = eg.Wait()
+	switch {
+	case errors.Is(err, nil):
+		return nil
+	case errors.Is(err, http.ErrServerClosed),
+		errors.Is(err, context.Canceled),
+		errors.Is(err, server.ErrServerClosed):
+		return nil // expected errors when server is being closed
+	default:
+		return err
+	}
 }
 
-func listenTCP(addr string) (net.Listener, error) {
+type idleTracker struct {
+	idleTimeout time.Duration
+
+	clientCount atomic.Int32
+	idleTimer   *time.Timer
+}
+
+func newIdleTracker(idleTimeout time.Duration, expiredCallback func()) *idleTracker {
+	if idleTimeout <= 0 {
+		return nil
+	}
+	return &idleTracker{
+		idleTimeout: idleTimeout,
+		idleTimer:   time.AfterFunc(idleTimeout, expiredCallback),
+	}
+}
+
+func (t *idleTracker) Connected() {
+	if t == nil {
+		return
+	}
+
+	if clients := t.clientCount.Add(1); clients > 0 {
+		t.idleTimer.Stop()
+	}
+}
+
+func (t *idleTracker) Disconnected() {
+	if t == nil {
+		return
+	}
+
+	if clients := t.clientCount.Add(-1); clients <= 0 {
+		t.idleTimer.Reset(t.idleTimeout)
+	}
+}
+
+func (t *idleTracker) Cancel() {
+	if t == nil {
+		return
+	}
+	t.idleTimer.Stop()
+}
+
+// makeListener can create listener from multiple sources:
+// * if "addr" starts with "fd:" - from inherited file descriptor
+// * if "addr" starts with "activated:" - searches inherited file descriptor by name in socket-activated environment
+// * if "addr" starts with "unix:" - unix domain sockets (files or abstract), useful if server is behind a proxy
+// * regular tcp listener otherwise
+func makeListener(addr string) (net.Listener, error) {
+	const (
+		fdPrefix        = "fd:"
+		activatedPrefix = "activated:"
+		unixPrefix      = "unix:"
+	)
+
+	switch {
+	case strings.HasPrefix(addr, fdPrefix): // listen on inherited file descriptor
+		fd, err := strconv.ParseUint(addr[len(fdPrefix):], 10, strconv.IntSize)
+		if err != nil {
+			return nil, fmt.Errorf("parse fd: %w", err)
+		}
+
+		f := os.NewFile(uintptr(fd), "")
+		defer f.Close() // can be safely closed here because FileListener dups fd with necessary opts
+
+		return net.FileListener(f)
+	case strings.HasPrefix(addr, activatedPrefix):
+		// search a "named" file descriptor if we're inside socket-activated environment
+		listeners, err := socketactivation.ActivationListeners(addr[len(activatedPrefix):])
+		if err != nil {
+			return nil, fmt.Errorf("get activated listeners: %w", err)
+		}
+
+		if len(listeners) == 0 {
+			return nil, fmt.Errorf("no activated listeners found by name")
+		}
+
+		return listeners[0], nil
+	case strings.HasPrefix(addr, unixPrefix):
+		path := addr[len(unixPrefix):]
+		if strings.HasPrefix(path, "@") {
+			// abstract unix socket
+			return net.Listen("unix", path)
+		}
+
+		path, perm, _ := strings.Cut(path, ",") // get permissions
+		_ = os.Remove(path)                     // remove existing file
+		lis, err := net.Listen("unix", path)
+		if err != nil {
+			return nil, err
+		}
+
+		if parsedPerm, err := strconv.ParseUint(perm, 8, 32); err == nil {
+			// apply permissions to file
+			if err = os.Chmod(path, os.FileMode(parsedPerm)); err != nil {
+				return nil, fmt.Errorf("chmod: %w", err)
+			}
+		}
+
+		return lis, nil
+	}
+
 	// if address is ipv4 we should pass "tcp4" net to listen only on ipv4 addresses
 
 	host, _, err := net.SplitHostPort(addr)

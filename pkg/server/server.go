@@ -8,10 +8,16 @@ import (
 	"log/slog"
 	"net"
 	"path"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
 	"github.com/xakep666/ps3netsrv-go/pkg/proto"
+)
+
+var (
+	ErrServerClosed = errors.New("server closed")
 )
 
 type Server[StateT any] struct {
@@ -24,14 +30,30 @@ type Server[StateT any] struct {
 
 	// Logger is the logger for the server.
 	Logger *slog.Logger
+
+	inShutdown    atomic.Bool // true when server is in shutdown
+	mu            sync.Mutex
+	listeners     map[*net.Listener]struct{}
+	activeConn    map[*net.Conn]struct{}
+	listenerGroup sync.WaitGroup
 }
 
 func (s *Server[StateT]) Serve(ln net.Listener) error {
+	ln = newOnceCloseListener(ln)
 	defer ln.Close()
+
+	if !s.trackListener(&ln, true) {
+		return ErrServerClosed
+	}
+	defer s.trackListener(&ln, false)
 
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			if s.shuttingDown() {
+				return ErrServerClosed
+			}
+
 			return fmt.Errorf("accept failed: %w", err)
 		}
 
@@ -56,6 +78,9 @@ func (s *Server[StateT]) deriveConnContext(conn net.Conn) context.Context {
 }
 
 func (s *Server[StateT]) serveConn(conn net.Conn) {
+	s.trackConn(&conn, true)
+	defer s.trackConn(&conn, false)
+
 	ctx := &Context[StateT]{
 		RemoteAddr: conn.RemoteAddr(),
 		rd:         proto.Reader{Reader: conn},
@@ -66,7 +91,6 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 	log := s.Logger.With(logutil.StringerAttr("remote", conn.RemoteAddr()))
 
 	log.Info("Client connected")
-	defer log.Info("Client disconnected")
 
 	defer func() {
 		if err := ctx.Close(); err != nil {
@@ -76,6 +100,11 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 
 	defer conn.Close()
 
+	if err := s.Handler.Init(ctx); err != nil {
+		log.ErrorContext(ctx, "'Init' execute failed", logutil.ErrorAttr(err))
+		return
+	}
+
 	for {
 		if err := s.setConnReadDeadline(conn); err != nil {
 			log.ErrorContext(ctx, "Failed to set read deadline", logutil.ErrorAttr(err))
@@ -83,12 +112,20 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 		}
 
 		opCode, err := ctx.rd.ReadCommand()
+		var netErr net.Error
 		switch {
 		case errors.Is(err, nil):
 			// pass
-		case errors.Is(err, io.EOF):
-			log.InfoContext(ctx, "Connection closed")
+		case errors.Is(err, io.EOF), errors.Is(err, net.ErrClosed):
+			log.InfoContext(ctx, "Client disconnected: connection closed")
 			return
+		case errors.As(err, &netErr):
+			if netErr.Timeout() {
+				log.InfoContext(ctx, "Client disconnected: inactivity timeout")
+				return
+			}
+
+			fallthrough
 		default:
 			log.ErrorContext(ctx, "Read command failed", logutil.ErrorAttr(err))
 			return
@@ -103,6 +140,73 @@ func (s *Server[StateT]) serveConn(conn net.Conn) {
 			return
 		}
 	}
+}
+
+func (s *Server[StateT]) trackListener(ln *net.Listener, add bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listeners == nil {
+		s.listeners = make(map[*net.Listener]struct{})
+	}
+	if add {
+		if s.shuttingDown() {
+			return false
+		}
+		s.listeners[ln] = struct{}{}
+		s.listenerGroup.Add(1)
+	} else {
+		delete(s.listeners, ln)
+		s.listenerGroup.Done()
+	}
+	return true
+}
+
+func (s *Server[StateT]) trackConn(c *net.Conn, add bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeConn == nil {
+		s.activeConn = make(map[*net.Conn]struct{})
+	}
+	if add {
+		s.activeConn[c] = struct{}{}
+	} else {
+		delete(s.activeConn, c)
+	}
+}
+
+func (s *Server[StateT]) shuttingDown() bool {
+	return s.inShutdown.Load()
+}
+
+func (s *Server[StateT]) Close() error {
+	s.inShutdown.Store(true)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := s.closeListenersLocked()
+
+	// Unlock s.mu while waiting for listenerGroup.
+	// The group Add and Done calls are made with s.mu held,
+	// to avoid adding a new listener in the window between
+	// us setting inShutdown above and waiting here.
+	s.mu.Unlock()
+	s.listenerGroup.Wait()
+	s.mu.Lock()
+
+	for c := range s.activeConn {
+		(*c).Close()
+		delete(s.activeConn, c)
+	}
+	return err
+}
+
+func (s *Server[StateT]) closeListenersLocked() error {
+	var errs []error
+	for ln := range s.listeners {
+		if err := (*ln).Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (s *Server[StateT]) handleCommand(opCode proto.OpCode, ctx *Context[StateT]) error {
@@ -375,4 +479,20 @@ func (s *Server[StateT]) handleGetDirSize(ctx *Context[StateT]) error {
 	}
 
 	return ctx.wr.SendGetDirectorySizeResult(size)
+}
+
+type onceCloseListener struct {
+	net.Listener
+	onceClose func() error
+}
+
+func newOnceCloseListener(ln net.Listener) *onceCloseListener {
+	return &onceCloseListener{
+		Listener:  ln,
+		onceClose: sync.OnceValue(ln.Close),
+	}
+}
+
+func (l *onceCloseListener) Close() error {
+	return l.onceClose()
 }

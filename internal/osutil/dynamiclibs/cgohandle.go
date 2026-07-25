@@ -4,7 +4,7 @@
 
 // This is copied from Go stdlib to avoid import of 'runtime/cgo' (this and purego fails compilation with CGO_ENABLED=0)
 
-package osutil
+package dynamiclibs
 
 import (
 	"sync"

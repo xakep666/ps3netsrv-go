@@ -5,9 +5,10 @@ After=network.target network-online.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/ps3netsrv-go server --config=/etc/ps3netsrv-go/config.ini
+ExecStart=/usr/bin/ps3netsrv-go server --config=/etc/ps3netsrv-go/%i.ini
 User=ps3netsrv
 Group=ps3netsrv
 
 [Install]
 WantedBy=multi-user.target
+DefaultInstance=config

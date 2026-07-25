@@ -80,8 +80,19 @@ nfpms:
     contents:
       - src: package/linux/ps3netsrv-go.service
         dst: /usr/lib/systemd/system/ps3netsrv-go.service
+      - src: package/linux/ps3netsrv-go@.service
+        dst: /usr/lib/systemd/system/ps3netsrv-go@.service
+      - src: package/linux/ps3netsrv-go.socket
+        dst: /usr/lib/systemd/system/ps3netsrv-go.socket
       - src: package/linux/config.ini
         dst: /etc/ps3netsrv-go/config.ini
+        type: "config|noreplace"
+        file_info:
+          mode: 0755
+          owner: ps3netsrv
+          group: ps3netsrv
+      - src: package/linux/activated.ini
+        dst: /etc/ps3netsrv-go/activated.ini
         type: "config|noreplace"
         file_info:
           mode: 0755

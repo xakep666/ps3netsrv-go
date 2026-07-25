@@ -1,6 +1,6 @@
 //go:build linux || solaris || aix || zos
 
-package osutil
+package filesystem
 
 import "golang.org/x/sys/unix"
 

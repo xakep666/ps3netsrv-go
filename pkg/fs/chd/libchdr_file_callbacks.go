@@ -1,5 +1,3 @@
-//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
-
 package chd
 
 import (
@@ -11,11 +9,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/ebitengine/purego"
-
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-	"github.com/xakep666/ps3netsrv-go/internal/osutil"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/dynamiclibs"
 )
 
 // fileCallbacks are called by libchdr itself to outsource i/o operations
@@ -29,9 +25,9 @@ type fileCallbacks struct {
 }
 
 func newFileCallbacks(log *slog.Logger) *fileCallbacks {
-	// osutil.Handle used to propagate a Go value through C code without it's being garbage-collected
+	// dynamiclibs.Handle used to propagate a Go value through C code without it's being garbage-collected
 	return &fileCallbacks{
-		fsize: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle) uint64 {
+		fsize: dynamiclibs.NewCallback(func(_ dynamiclibs.CDecl, userdata dynamiclibs.Handle) uint64 {
 			f := userdata.Value().(handler.File)
 			ret, err := f.Seek(0, io.SeekEnd)
 			if err != nil {
@@ -40,7 +36,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 			}
 			return uint64(ret)
 		}),
-		fread: purego.NewCallback(func(_ purego.CDecl, target *byte, size, count int64, userdata osutil.Handle) int64 {
+		fread: dynamiclibs.NewCallback(func(_ dynamiclibs.CDecl, target *byte, size, count int64, userdata dynamiclibs.Handle) int64 {
 			f := userdata.Value().(handler.File)
 			n, err := f.Read(unsafe.Slice(target, count*size))
 			switch {
@@ -53,7 +49,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 				return int64(extractSysErrCode(err))
 			}
 		}),
-		fclose: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle) int {
+		fclose: dynamiclibs.NewCallback(func(_ dynamiclibs.CDecl, userdata dynamiclibs.Handle) int {
 			defer userdata.Delete()
 
 			f := userdata.Value().(handler.File)
@@ -64,7 +60,7 @@ func newFileCallbacks(log *slog.Logger) *fileCallbacks {
 			}
 			return 0
 		}),
-		fseek: purego.NewCallback(func(_ purego.CDecl, userdata osutil.Handle, offset int64, whence int) int {
+		fseek: dynamiclibs.NewCallback(func(_ dynamiclibs.CDecl, userdata dynamiclibs.Handle, offset int64, whence int) int {
 			f := userdata.Value().(handler.File)
 			_, err := f.Seek(offset, whence)
 			if err != nil {

@@ -1,5 +1,3 @@
-//go:build !nopurego && (((android || ios || linux || darwin || windows || freebsd || netbsd) && (amd64 || arm64)) || ((android || windows) && (386 || arm)) || (linux && (386 || arm || loong64 || ppc64le || riscv64 || s390x)))
-
 package chd
 
 import (
@@ -10,11 +8,9 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/ebitengine/purego"
-
 	"github.com/xakep666/ps3netsrv-go/internal/handler"
 	"github.com/xakep666/ps3netsrv-go/internal/logutil"
-	"github.com/xakep666/ps3netsrv-go/internal/osutil"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/dynamiclibs"
 )
 
 type fileMode int
@@ -28,17 +24,17 @@ type LibCHDR struct {
 	log       *slog.Logger
 	callbacks *fileCallbacks
 
-	openFileCallbacks   func(callbacks *fileCallbacks, userdata osutil.Handle, mode fileMode, parent fileHandle, chdFile *fileHandle) errorCode
+	openFileCallbacks   func(callbacks *fileCallbacks, userdata dynamiclibs.Handle, mode fileMode, parent fileHandle, chdFile *fileHandle) errorCode
 	close               func(chdFile fileHandle)
 	getHeader           func(chdFile fileHandle) *FileHeader
 	getMetadata         func(chdFile fileHandle, searchTag, searchIndex uint32, output *byte, outputLen uint32, resultLen, resultTag *uint32, resultFlags *byte) errorCode
-	readHeaderCallbacks func(callbacks *fileCallbacks, userdata osutil.Handle, header *FileHeader) errorCode
+	readHeaderCallbacks func(callbacks *fileCallbacks, userdata dynamiclibs.Handle, header *FileHeader) errorCode
 	read                func(chdFile fileHandle, hunknum uint32, buffer *byte) errorCode
 	errorString         func(code errorCode) string
 }
 
 func NewLibCHDR(logger *slog.Logger) (*LibCHDR, error) {
-	handle, err := osutil.LoadLibrary("libchdr")
+	handle, err := dynamiclibs.LoadLibrary("libchdr")
 	if err != nil {
 		return nil, err
 	}
@@ -47,16 +43,16 @@ func NewLibCHDR(logger *slog.Logger) (*LibCHDR, error) {
 		log:       logger,
 		callbacks: newFileCallbacks(logger),
 	}
-	purego.RegisterLibFunc(&ret.openFileCallbacks, handle, "chd_open_core_file_callbacks")
-	purego.RegisterLibFunc(&ret.close, handle, "chd_close")
-	purego.RegisterLibFunc(&ret.getHeader, handle, "chd_get_header")
-	purego.RegisterLibFunc(&ret.getMetadata, handle, "chd_get_metadata")
-	purego.RegisterLibFunc(&ret.readHeaderCallbacks, handle, "chd_read_header_core_file_callbacks")
-	purego.RegisterLibFunc(&ret.read, handle, "chd_read")
-	purego.RegisterLibFunc(&ret.errorString, handle, "chd_error_string")
+	dynamiclibs.RegisterLibFunc(&ret.openFileCallbacks, handle, "chd_open_core_file_callbacks")
+	dynamiclibs.RegisterLibFunc(&ret.close, handle, "chd_close")
+	dynamiclibs.RegisterLibFunc(&ret.getHeader, handle, "chd_get_header")
+	dynamiclibs.RegisterLibFunc(&ret.getMetadata, handle, "chd_get_metadata")
+	dynamiclibs.RegisterLibFunc(&ret.readHeaderCallbacks, handle, "chd_read_header_core_file_callbacks")
+	dynamiclibs.RegisterLibFunc(&ret.read, handle, "chd_read")
+	dynamiclibs.RegisterLibFunc(&ret.errorString, handle, "chd_error_string")
 
 	runtime.AddCleanup(ret, func(h uintptr) {
-		if err := osutil.UnloadLibrary(h); err != nil {
+		if err := dynamiclibs.UnloadLibrary(h); err != nil {
 			logger.Warn("chd: unload libchdr", logutil.ErrorAttr(err))
 		}
 	}, handle)
@@ -71,7 +67,7 @@ func (l *LibCHDR) NewFile(f handler.File) (*File, error) {
 	}
 
 	var chdFileHandle fileHandle
-	chdErrCode := l.openFileCallbacks(l.callbacks, osutil.NewHandle(f), fileModeRead, 0, &chdFileHandle)
+	chdErrCode := l.openFileCallbacks(l.callbacks, dynamiclibs.NewHandle(f), fileModeRead, 0, &chdFileHandle)
 	if err := l.makeError(chdErrCode); err != nil {
 		return nil, fmt.Errorf("chd: open: %w", err)
 	}
@@ -155,7 +151,7 @@ func (l *LibCHDR) readMeatadata(handle fileHandle) ([]CDMetadata, error) {
 }
 
 func (l *LibCHDR) ReadHeader(f handler.File) (*FileHeader, error) {
-	cgoFileHandle := osutil.NewHandle(f)
+	cgoFileHandle := dynamiclibs.NewHandle(f)
 	defer cgoFileHandle.Delete()
 
 	var header FileHeader

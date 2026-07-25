@@ -11,6 +11,8 @@ type State struct {
 	ROFile       File
 	CDSectorSize int // of ROFile, used by ReadCD2048Critical
 	WOFile       WritableFile
+
+	OnClose func() error
 }
 
 func (s *State) Close() error {
@@ -41,6 +43,12 @@ func (s *State) Close() error {
 	}
 
 	s.CDSectorSize = 0
+
+	if s.OnClose != nil {
+		if err := s.OnClose(); err != nil {
+			errs = append(errs, fmt.Errorf("OnClose error: %w", err))
+		}
+	}
 
 	return errors.Join(errs...)
 }
