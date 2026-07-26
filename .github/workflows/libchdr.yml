@@ -26,7 +26,8 @@ jobs:
             goname: darwin
             libc: none
         include:
-          # arm support only for linux with hard-float support
+          # arm support with soft-float, should not affect performance (libchdr doesn't use float/double)
+          # but bring better portability for old arm-based NAS hardware
           - arch:
               name: arm
               goname: arm
@@ -34,7 +35,7 @@ jobs:
               name: linux
               cmakename: Linux
               goname: linux
-              libc: gnueabihf
+              libc: gnueabi.2.10
         exclude:
           # windows arm64 version can't compile
           - arch:
