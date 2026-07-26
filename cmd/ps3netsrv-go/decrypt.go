@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -18,7 +19,7 @@ type decrypt3k3yCmd struct {
 	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
 }
 
-func (c *decrypt3k3yCmd) Run() error {
+func (c *decrypt3k3yCmd) Run(k *kong.Kong) error {
 	key, err := iso3k3y.Test3k3yImage(c.Image)
 	if err != nil {
 		return fmt.Errorf("failed to get 3k3y image key: %w", err)
@@ -37,7 +38,7 @@ func (c *decrypt3k3yCmd) Run() error {
 		return err
 	}
 
-	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.New(mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(fi.Size(),
 		mpb.BarStyle().Rbound("|"),
@@ -66,7 +67,7 @@ type decryptRedumpCmd struct {
 	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
 }
 
-func (c *decryptRedumpCmd) Run() error {
+func (c *decryptRedumpCmd) Run(k *kong.Kong) error {
 	key, err := encryptediso.ReadKeyFile(c.Key)
 	if err != nil {
 		return fmt.Errorf("key read failed: %w", err)
@@ -82,7 +83,7 @@ func (c *decryptRedumpCmd) Run() error {
 		return err
 	}
 
-	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.New(mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(fi.Size(),
 		mpb.BarStyle().Rbound("|"),

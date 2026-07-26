@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/docker/go-units"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -17,7 +18,7 @@ type csoInfoCmd struct {
 	Image *os.File `arg:"" help:"Path to CSO/ZSO image to inspect."`
 }
 
-func (c *csoInfoCmd) Run() error {
+func (c *csoInfoCmd) Run(k *kong.Kong) error {
 	fi, err := c.Image.Stat()
 	if err != nil {
 		return err
@@ -42,7 +43,7 @@ func (c *csoInfoCmd) Run() error {
 		{"Uncompressed size", "%s", units.HumanSize(float64(hdr.UncompressedSize))},
 		{"On-disk size", "%s", units.HumanSize(float64(fi.Size()))},
 	}
-	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
+	tw := tabwriter.NewWriter(k.Stdout, 10, 0, 2, ' ', 0)
 	for _, d := range data {
 		_, err := fmt.Fprintf(tw, "%s:\t"+d.formatter+"\n", d.name, d.value)
 		if err != nil {
@@ -57,13 +58,13 @@ type csoDecompressCmd struct {
 	Output *os.File `arg:"" help:"Path to output image." type:"outputfile"`
 }
 
-func (c *csoDecompressCmd) Run() error {
+func (c *csoDecompressCmd) Run(k *kong.Kong) error {
 	f, err := cso.NewFile(c.Image)
 	if err != nil {
 		return err
 	}
 
-	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.New(mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 	builder := mpb.BarStyle().Rbound("|")
 	opts := []mpb.BarOption{
 		mpb.PrependDecorators(

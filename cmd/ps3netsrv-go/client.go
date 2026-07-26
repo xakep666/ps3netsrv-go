@@ -8,11 +8,10 @@ import (
 	"io"
 	"iter"
 	"os"
-	"os/signal"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/docker/go-units"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
@@ -25,11 +24,8 @@ type clientStatCmd struct {
 	Path string `arg:"" help:"Path on server to stat"`
 }
 
-func (c *clientStatCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	info, err := client.StatFile(sigCtx, c.Path)
+func (c *clientStatCmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
+	info, err := client.StatFile(ctx, c.Path)
 	if err != nil {
 		return err
 	}
@@ -42,7 +38,7 @@ func (c *clientStatCmd) Run(client *client.Client) error {
 	fmt.Fprintf(&buf, "Change time: %s (%d)\n", time.Unix(int64(info.ChangeTime), 0).Format(time.Stamp), info.ChangeTime)
 	fmt.Fprintf(&buf, "Is directory: %t\n", info.IsDirectory)
 
-	_, err = buf.WriteTo(os.Stdout)
+	_, err = buf.WriteTo(k.Stdout)
 	return err
 }
 
@@ -51,19 +47,16 @@ type clientReadDirCmd struct {
 	Method string `enum:"v1,v2,full" help:"Method to use: v1 - send ReadDirEntry commands, v2 - send ReadDirEntryV2 commands, full - send ReadDir command." default:"v2"`
 }
 
-func (c *clientReadDirCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	if err := client.OpenDir(sigCtx, c.Path); err != nil {
+func (c *clientReadDirCmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
+	if err := client.OpenDir(ctx, c.Path); err != nil {
 		return fmt.Errorf("open dir: %w", err)
 	}
 
 	defer func() {
-		_ = client.CloseFile(sigCtx)
+		_ = client.CloseFile(context.WithoutCancel(ctx))
 	}()
 
-	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
+	tw := tabwriter.NewWriter(k.Stdout, 10, 0, 2, ' ', 0)
 	switch c.Method {
 	case "v1":
 		_, err := io.WriteString(tw, "Name\tIs directory\tSize (in bytes)\n")
@@ -71,7 +64,7 @@ func (c *clientReadDirCmd) Run(client *client.Client) error {
 			return err
 		}
 
-		iter, errp := dirEntriesV1(sigCtx, client)
+		iter, errp := dirEntriesV1(ctx, client)
 		for item := range iter {
 			_, err := fmt.Fprintf(tw, "%s\t%t\t%s (%d)\n",
 				item.Name,
@@ -91,7 +84,7 @@ func (c *clientReadDirCmd) Run(client *client.Client) error {
 			return err
 		}
 
-		iter, errp := dirEntriesV2(sigCtx, client)
+		iter, errp := dirEntriesV2(ctx, client)
 		for item := range iter {
 			_, err := fmt.Fprintf(tw, "%s\t%t\t%s (%d)\t%s (%d)\t%s (%d)\t%s (%d)\n",
 				item.Name,
@@ -114,7 +107,7 @@ func (c *clientReadDirCmd) Run(client *client.Client) error {
 			return err
 		}
 
-		items, err := client.ReadDir(sigCtx)
+		items, err := client.ReadDir(ctx)
 		if err != nil {
 			return err
 		}
@@ -149,16 +142,13 @@ type clientDirSizeCmd struct {
 	Path string `arg:"" help:"Path to target directory on server"`
 }
 
-func (c *clientDirSizeCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	size, err := client.GetDirSize(sigCtx, c.Path)
+func (c *clientDirSizeCmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
+	size, err := client.GetDirSize(ctx, c.Path)
 	if err != nil {
 		return err
 	}
 
-	_, err = fmt.Printf("Size (in bytes): %s (%d)\n", units.HumanSize(float64(size)), size)
+	_, err = fmt.Fprintf(k.Stdout, "Size (in bytes): %s (%d)\n", units.HumanSize(float64(size)), size)
 	return err
 }
 
@@ -166,33 +156,24 @@ type clientMkdirCmd struct {
 	Path string `arg:"" help:"Path to target directory on server"`
 }
 
-func (c *clientMkdirCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	return client.MkDir(sigCtx, c.Path)
+func (c *clientMkdirCmd) Run(ctx context.Context, client *client.Client) error {
+	return client.MkDir(ctx, c.Path)
 }
 
 type clientRmdirCmd struct {
 	Path string `arg:"" help:"Path to target directory on server"`
 }
 
-func (c *clientRmdirCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	return client.RmDir(sigCtx, c.Path)
+func (c *clientRmdirCmd) Run(ctx context.Context, client *client.Client) error {
+	return client.RmDir(ctx, c.Path)
 }
 
 type clientRmCmd struct {
 	Path string `arg:"" help:"Path to target file on server"`
 }
 
-func (c *clientRmCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	return client.DeleteFile(sigCtx, c.Path)
+func (c *clientRmCmd) Run(ctx context.Context, client *client.Client) error {
+	return client.DeleteFile(ctx, c.Path)
 }
 
 type clientReadCmd struct {
@@ -205,17 +186,14 @@ type clientReadCmd struct {
 	Count       int    `help:"Read N blocks. Read until EOF if not specified." placeholder:"N"`
 }
 
-func (c *clientReadCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	openResult, err := client.OpenFile(sigCtx, c.Path)
+func (c *clientReadCmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
+	openResult, err := client.OpenFile(ctx, c.Path)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_ = client.CloseFile(sigCtx)
+		_ = client.CloseFile(context.WithoutCancel(ctx))
 	}()
 
 	offset := min(int64(c.Seek)*int64(c.BlockSize), 0)
@@ -233,7 +211,7 @@ func (c *clientReadCmd) Run(client *client.Client) error {
 		return err
 	}
 
-	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.NewWithContext(ctx, mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(count,
 		mpb.BarStyle().Rbound("|"),
@@ -248,14 +226,14 @@ func (c *clientReadCmd) Run(client *client.Client) error {
 		),
 	)
 
-	fmt.Fprintf(os.Stderr, "Reading file %q from server\n", c.Path)
+	fmt.Fprintf(k.Stderr, "Reading file %q from server\n", c.Path)
 	target := bar.ProxyWriter(targetFile)
 	for count > 0 {
 		readBytes := min(int64(c.BlockSize), count)
 		if c.NonCritical {
-			err = client.ReadFile(sigCtx, uint32(readBytes), uint64(offset), target)
+			err = client.ReadFile(ctx, uint32(readBytes), uint64(offset), target)
 		} else {
-			err = client.ReadFileCritical(sigCtx, uint32(readBytes), uint64(offset), target)
+			err = client.ReadFileCritical(ctx, uint32(readBytes), uint64(offset), target)
 		}
 		if err != nil {
 			return err
@@ -279,17 +257,14 @@ type clientReadCd2048Cmd struct {
 	Count     uint32 `help:"Read N sectors. Read until EOF if not specified." placeholder:"N" required:"true"`
 }
 
-func (c *clientReadCd2048Cmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
-	openResult, err := client.OpenFile(sigCtx, c.Path)
+func (c *clientReadCd2048Cmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
+	openResult, err := client.OpenFile(ctx, c.Path)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_ = client.CloseFile(sigCtx)
+		_ = client.CloseFile(context.WithoutCancel(ctx))
 	}()
 
 	offset := c.Seek
@@ -307,7 +282,7 @@ func (c *clientReadCd2048Cmd) Run(client *client.Client) error {
 		return err
 	}
 
-	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.NewWithContext(ctx, mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(int64(count)*sectorSize,
 		mpb.BarStyle().Rbound("|"),
@@ -323,9 +298,9 @@ func (c *clientReadCd2048Cmd) Run(client *client.Client) error {
 	)
 
 	target := bar.ProxyWriter(targetFile)
-	fmt.Fprintf(os.Stderr, "Reading file %q from server in cd-2048 mode\n", c.Path)
+	fmt.Fprintf(k.Stderr, "Reading file %q from server in cd-2048 mode\n", c.Path)
 	for count > 0 {
-		err := client.ReadCD2048Critical(sigCtx, c.BlockSize, offset, target)
+		err := client.ReadCD2048Critical(ctx, c.BlockSize, offset, target)
 		if err != nil {
 			return err
 		}
@@ -348,10 +323,7 @@ type clientWriteCmd struct {
 	Count     int    `help:"Read N blocks. Read until EOF if not specified." placeholder:"N"`
 }
 
-func (c *clientWriteCmd) Run(client *client.Client) error {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
+func (c *clientWriteCmd) Run(ctx context.Context, k *kong.Kong, client *client.Client) error {
 	fi, err := c.Source.Stat()
 	if err != nil {
 		return err
@@ -374,11 +346,11 @@ func (c *clientWriteCmd) Run(client *client.Client) error {
 		}
 	}
 
-	if err = client.CreateFile(sigCtx, c.TargetPath); err != nil {
+	if err = client.CreateFile(ctx, c.TargetPath); err != nil {
 		return err
 	}
 
-	p := mpb.NewWithContext(sigCtx, mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.NewWithContext(ctx, mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(count,
 		mpb.BarStyle().Rbound("|"),
@@ -392,8 +364,8 @@ func (c *clientWriteCmd) Run(client *client.Client) error {
 		),
 	)
 
-	fmt.Fprintf(os.Stderr, "Sending file %q\n", c.Source.Name())
-	err = client.WriteFile(sigCtx, c.BlockSize, bar.ProxyReader(io.LimitReader(c.Source, count)))
+	fmt.Fprintf(k.Stderr, "Sending file %q\n", c.Source.Name())
+	err = client.WriteFile(ctx, c.BlockSize, bar.ProxyReader(io.LimitReader(c.Source, count)))
 	if err != nil {
 		return err
 	}
@@ -480,10 +452,7 @@ type clientApp struct {
 	WriteCmd      clientWriteCmd      `cmd:"" name:"write" help:"Copy local file to server"`
 }
 
-func (c *clientApp) ProvideClient() (*client.Client, error) {
-	sigCtx, sigDone := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer sigDone()
-
+func (c *clientApp) ProvideClient(ctx context.Context) (*client.Client, error) {
 	var cop *ioutil.Copier
 	if c.BufferSize > 0 {
 		cop = ioutil.NewPooledCopier(c.BufferSize)
@@ -491,5 +460,5 @@ func (c *clientApp) ProvideClient() (*client.Client, error) {
 		cop = ioutil.NewCopier()
 	}
 
-	return client.NewClient(sigCtx, cop, c.Address)
+	return client.NewClient(ctx, cop, c.Address)
 }
