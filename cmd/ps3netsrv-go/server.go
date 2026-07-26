@@ -10,13 +10,11 @@ import (
 	_ "net/http/pprof"
 	"net/netip"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
@@ -350,7 +348,7 @@ func (sapp *serverApp) setupRuntime() {
 	}
 }
 
-func (sapp *serverApp) Run() error {
+func (sapp *serverApp) Run(ctx context.Context) error {
 	// do this manually because type:existingdir flags can't be read from config
 	newRoot := kong.ExpandPath(sapp.Root)
 	di, err := os.Stat(newRoot)
@@ -363,12 +361,6 @@ func (sapp *serverApp) Run() error {
 	sapp.setupRuntime()
 	sapp.warnRoot()
 	go sapp.scanAndWarn() // asynchronously to not delay server startup
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	context.AfterFunc(ctx, func() {
-		slog.Info("Shutting down... Press Ctrl-C again for force-shutdown")
-		stop()
-	})
 
 	ctx, idleCancel := context.WithCancel(ctx)
 	defer idleCancel()

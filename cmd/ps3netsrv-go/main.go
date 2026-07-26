@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,21 +37,28 @@ type app struct {
 }
 
 func main() {
-	var app app
-	k := kong.Must(&app,
-		kong.Name("ps3netsrv-go"),
-		kong.Description("Alternative ps3netsrv implementation for installing games over network."),
-		kong.Configuration(kongini.Loader, configLocations()...),
-		kong.Vars{
-			"version": versionString(),
+	kongutil.Run(
+		kong.Must(new(app),
+			kong.Name("ps3netsrv-go"),
+			kong.Description("Alternative ps3netsrv implementation for installing games over network."),
+			kong.Configuration(kongini.Loader, configLocations()...),
+			kong.Vars{
+				"version": versionString(),
+			},
+			kong.UsageOnError(),
+			kongutil.OutputFileMapper,
+			kongutil.BinSizeMapper,
+		),
+		func(ctx context.Context, k *kong.Kong, args []string) error {
+			kctx, err := k.Parse(translateArgs(args))
+			if err != nil {
+				return err
+			}
+
+			kctx.BindTo(ctx, (*context.Context)(nil))
+			return kctx.Run()
 		},
-		kong.UsageOnError(),
-		kongutil.OutputFileMapper,
-		kongutil.BinSizeMapper,
 	)
-	ctx, err := k.Parse(translateArgs(os.Args[1:]))
-	k.FatalIfErrorf(err)
-	k.FatalIfErrorf(ctx.Run())
 }
 
 func versionString() string {
