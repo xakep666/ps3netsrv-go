@@ -123,6 +123,7 @@ This project shipped in a multiple ways for convenient installation:
 * Linux packages: deb, rpm and archlinux. See [Releases](https://github.com/xakep666/ps3netsrv-go/releases). 
 If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go.service).
 * Archived binaries are also available in Releases.
+* QNAP NAS packages (qpkg) are available at [@Hirador's repo](https://github.com/Hirador/ps3netsrv-go/releases)
 
 ### libchdr
 This libarary is required to enable CHD images support. It's included in a following release types:
@@ -264,7 +265,7 @@ You can build ISO image using `makeiso` subcommand.
     * [ngrok](https://ngrok.com/docs/secure-tunnels/tunnels/tcp-tunnels/) TCP tunnels
     * [Reverse SSH tunnel](https://jfrog.com/connect/post/reverse-ssh-tunneling-from-start-to-end/) to host with public IP
     * any other options
-* To secure connection using TLS you may use two TLS-terminators (like [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
+* To secure connection using TLS you may use two TLS-terminators (like [Stunnel](https://www.stunnel.org/) or [HAProxy](https://www.haproxy.org/)) configured with mutual TLS authentication. Note that desired terminator must support "wrapping" plain TCP connection to TLS with client certificate. 
 
 ## Requirements to build
 [Go 1.26+](https://go.dev/dl/)
