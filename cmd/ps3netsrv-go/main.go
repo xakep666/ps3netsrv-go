@@ -31,9 +31,26 @@ type app struct {
 	CHDApp     chdApp     `cmd:"" name:"chd" help:"Helpers for CHD images."`
 	CSOApp     csoApp     `cmd:"" name:"cso" help:"Helpers for CSO/ZSO images."`
 	ClientApp  clientApp  `cmd:"" name:"client" help:"Client for netiso protocol"`
+	SvcApp     svcApp
 
 	Version kong.VersionFlag `help:"Show application version info."`
 	Config  kong.ConfigFlag  `help:"Load configuration from file." env:"PS3NETSRV_CONFIG_FILE"`
+}
+
+func (a *app) AbsoluteConfigPath() (string, error) {
+	if a.Config == "" {
+		return "", nil
+	}
+	p := kong.ExpandPath(string(a.Config))
+	if filepath.IsAbs(p) {
+		return string(p), nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(wd, p), nil
 }
 
 func main() {
