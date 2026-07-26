@@ -17,6 +17,7 @@ will run without any external library on target system.
 * TCP data exchange timeouts / auto-close of idle connections: configured by `--read-timeout` parameter.
 * [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
 * [Socket activation](#socket-activation) - run service on-demand, only when client (console) connects.
+* Natively runs as [Windows Service](#windows)
 
 ### Supported ✅
 
@@ -238,7 +239,12 @@ There are two ways to resolve this issue:
 * Run with loader: `/lib/ld-musl-<arch>.so.1 /path/to/ps3netsrv-go`. Downside: `libchdr` likely will not be loaded so CHD support will be disabled.
 
 ### Windows
-To run as a service it's recommended to use [NSSM](https://nssm.cc/usage). It allows to specify user, startup args and environment variables. 
+
+To install ps3netsrv-go as Windows Service use `svc install` subcommand. 
+It requires `--config` flag to be set to explicitly point which config should be used.
+Auto-start is disabled by default for security reasons. However it could be enabled with `--auto-start` flag.
+
+There are some other subcommands in `svc` to control service, check out `--help` for detailed usage.
 
 ## Performance tips
 * Connect your console to the network using ethernet cable. To achieve maximum performance server and console
