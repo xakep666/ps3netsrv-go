@@ -8,10 +8,14 @@ import (
 	"runtime/debug"
 
 	"github.com/alecthomas/kong"
+	"github.com/xakep666/ps3netsrv-go/internal/osutil/systemlog"
 	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 var errShuttingDown = fmt.Errorf("svc: shutting down")
+
+const runErrorID = 100
 
 func Run(app *kong.Kong, run RunFn) {
 	isSvc, err := svc.IsWindowsService()
@@ -23,9 +27,26 @@ func Run(app *kong.Kong, run RunFn) {
 		return
 	}
 
+	elog, err := systemlog.EventLog()
+	if err != nil {
+		panic(err)
+	}
+	defer elog.Close()
+
+	// to simplify further debugging override Kong's outputs with our event log
+	app.Stderr = &eventLogWriter{
+		eid: runErrorID,
+		fn:  elog.Error,
+	}
+	app.Stdout = &eventLogWriter{
+		eid: runErrorID,
+		fn:  elog.Info,
+	}
+
 	err = svc.Run(app.Model.Name, &kongRunService{
-		app: app,
-		run: run,
+		elog: elog,
+		app:  app,
+		run:  run,
 	})
 	if err != nil {
 		// this is system error and should never happen
@@ -34,8 +55,9 @@ func Run(app *kong.Kong, run RunFn) {
 }
 
 type kongRunService struct {
-	app *kong.Kong
-	run RunFn
+	elog *eventlog.Log
+	app  *kong.Kong
+	run  RunFn
 }
 
 func (ks *kongRunService) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (svcSpecificEC bool, exitCode uint32) {
@@ -69,7 +91,7 @@ func (ks *kongRunService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 	for {
 		select {
 		case err := <-errc:
-			return svcErrToCode(err)
+			return ks.handleAppError(err)
 		case req := <-r:
 			switch req.Cmd {
 			case svc.Interrogate:
@@ -78,20 +100,20 @@ func (ks *kongRunService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 				cancel(errShuttingDown)
 				s <- svc.Status{State: svc.StopPending}
 				// timeout is not necessary, controlled by service manager limits
-				return svcErrToCode(<-errc)
+				return ks.handleAppError(<-errc)
 			case svc.PreShutdown: // going to power off
 				cancel(errShuttingDown)
 				s <- svc.Status{State: svc.StopPending}
 			case svc.Shutdown: // powering off
 				// timeout is not necessary because Windows can kill service by itself
 				// HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\WaitToKillServiceTimeout
-				return svcErrToCode(<-errc)
+				return ks.handleAppError(<-errc)
 			}
 		}
 	}
 }
 
-func svcErrToCode(err error) (bool, uint32) {
+func (ks *kongRunService) handleAppError(err error) (bool, uint32) {
 	if err == nil {
 		return false, 0
 	}
@@ -99,6 +121,8 @@ func svcErrToCode(err error) (bool, uint32) {
 	if errors.Is(err, errShuttingDown) {
 		return false, 0 // may be returned, but it's expected
 	}
+
+	_ = ks.elog.Error(runErrorID, err.Error())
 
 	type exitCoder interface {
 		error
@@ -110,4 +134,17 @@ func svcErrToCode(err error) (bool, uint32) {
 	}
 
 	return false, 1 // generic error
+}
+
+type eventLogWriter struct {
+	eid uint32
+	fn  func(eid uint32, msg string) error
+}
+
+func (e *eventLogWriter) Write(b []byte) (int, error) {
+	err := e.fn(e.eid, string(b))
+	if err != nil {
+		return 0, err
+	}
+	return len(b), nil
 }
