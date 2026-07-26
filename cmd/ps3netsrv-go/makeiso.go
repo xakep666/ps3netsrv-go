@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -20,8 +21,8 @@ type makeISOApp struct {
 	PS3Mode   bool     `name:"ps3-mode" help:"Enable PS3 mode. Use to make PS3-game ISO (with specific data in first sectors) from unpacked game."`
 }
 
-func (a *makeISOApp) Run() error {
-	viso, err := viso.NewVirtualISO(context.Background(), fs.NewFS(fs.NewRelaxedSystemRoot(a.Directory), nil, nil), ".", a.PS3Mode)
+func (a *makeISOApp) Run(ctx context.Context, k *kong.Kong) error {
+	viso, err := viso.NewVirtualISO(ctx, fs.NewFS(fs.NewRelaxedSystemRoot(a.Directory), nil, nil), ".", a.PS3Mode)
 	if err != nil {
 		return fmt.Errorf("failed to build ISO: %w", err)
 	}
@@ -33,7 +34,7 @@ func (a *makeISOApp) Run() error {
 		return err
 	}
 
-	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.New(mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 
 	bar := p.New(fi.Size(),
 		mpb.BarStyle().Rbound("|"),

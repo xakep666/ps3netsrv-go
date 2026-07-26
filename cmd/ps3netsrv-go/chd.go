@@ -12,10 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/alecthomas/kong"
 	"github.com/docker/go-units"
-	"github.com/lmittmann/tint"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 	"github.com/vbauerster/mpb/v8"
 	"github.com/vbauerster/mpb/v8/decor"
 
@@ -26,7 +24,7 @@ type chdInfoCmd struct {
 	Image *os.File `arg:"" help:"Path to CHD image to inspect."`
 }
 
-func (c *chdInfoCmd) Run() error {
+func (c *chdInfoCmd) Run(k *kong.Kong) error {
 	fi, err := c.Image.Stat()
 	if err != nil {
 		return err
@@ -93,7 +91,7 @@ func (c *chdInfoCmd) Run() error {
 		return err
 	}
 
-	tw := tabwriter.NewWriter(os.Stdout, 10, 0, 2, ' ', 0)
+	tw := tabwriter.NewWriter(k.Stdout, 10, 0, 2, ' ', 0)
 	for _, d := range data {
 		_, err := fmt.Fprintf(tw, "%s:\t"+d.formatter+"\n", d.name, d.value)
 		if err != nil {
@@ -109,10 +107,9 @@ type chdDecompressCmd struct {
 	RawCdSectors bool     `help:"Write raw sectors data ignoring metadata info if CHD image is CD-codecs encoded."`
 }
 
-func (c *chdDecompressCmd) Run() error {
-	slogHandler := tint.NewHandler(colorable.NewColorable(os.Stderr), &tint.Options{
-		Level:   slog.LevelError,
-		NoColor: !isatty.IsTerminal(os.Stderr.Fd()),
+func (c *chdDecompressCmd) Run(k *kong.Kong) error {
+	slogHandler := slog.NewTextHandler(k.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelError,
 	})
 
 	log := slog.New(slogHandler)
@@ -127,7 +124,7 @@ func (c *chdDecompressCmd) Run() error {
 		return err
 	}
 
-	p := mpb.New(mpb.WithOutput(os.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
+	p := mpb.New(mpb.WithOutput(k.Stderr), mpb.WithRefreshRate(180*time.Millisecond))
 	builder := mpb.BarStyle().Rbound("|")
 	opts := []mpb.BarOption{
 		mpb.PrependDecorators(
@@ -155,7 +152,7 @@ func (c *chdDecompressCmd) Run() error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
+	fmt.Fprintf(k.Stderr, "Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
 	bar := p.New(cdFile.Size, builder, opts...)
 	_, err = io.Copy(c.Output, bar.ProxyReader(cdFile))
 	if err != nil {

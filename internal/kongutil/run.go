@@ -16,7 +16,8 @@ type RunFn func(ctx context.Context, app *kong.Kong, args []string) error
 func commonRun(app *kong.Kong, run RunFn) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, func() {
-		if isatty.IsTerminal(os.Stdout.Fd()) {
+		outFile, ok := app.Stdout.(*os.File)
+		if ok && isatty.IsTerminal(outFile.Fd()) {
 			// for terminal sessions print this log to help user if shutdown is stuck
 			slog.Info("Shutting down... Press Ctrl-C again for force-shutdown")
 		} else {

@@ -86,7 +86,7 @@ It's also recommended to have '--read-timeout' set in this case but not required
 `
 }
 
-func (sapp *serverApp) setupLogger() {
+func (sapp *serverApp) setupLogger(k *kong.Kong) {
 	level := sapp.LogLevel
 	if sapp.Debug {
 		level = slog.LevelDebug
@@ -100,14 +100,19 @@ func (sapp *serverApp) setupLogger() {
 	}
 
 	if slogHandler == nil {
+		outFile, outIsFile := k.Stdout.(*os.File)
 		if sapp.JSONLog {
-			slogHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			slogHandler = slog.NewJSONHandler(k.Stdout, &slog.HandlerOptions{
 				Level: level,
 			})
-		} else {
-			slogHandler = tint.NewTextHandler(colorable.NewColorable(os.Stdout), &tint.Options{
+		} else if outIsFile {
+			slogHandler = tint.NewTextHandler(colorable.NewColorable(outFile), &tint.Options{
 				Level:   level,
-				NoColor: !isatty.IsTerminal(os.Stdout.Fd()),
+				NoColor: !isatty.IsTerminal(outFile.Fd()),
+			})
+		} else {
+			slogHandler = slog.NewTextHandler(k.Stdout, &slog.HandlerOptions{
+				Level: level,
 			})
 		}
 	}
@@ -348,7 +353,7 @@ func (sapp *serverApp) setupRuntime() {
 	}
 }
 
-func (sapp *serverApp) Run(ctx context.Context) error {
+func (sapp *serverApp) Run(ctx context.Context, k *kong.Kong) error {
 	// do this manually because type:existingdir flags can't be read from config
 	newRoot := kong.ExpandPath(sapp.Root)
 	di, err := os.Stat(newRoot)
@@ -357,7 +362,7 @@ func (sapp *serverApp) Run(ctx context.Context) error {
 	}
 	sapp.Root = newRoot
 
-	sapp.setupLogger()
+	sapp.setupLogger(k)
 	sapp.setupRuntime()
 	sapp.warnRoot()
 	go sapp.scanAndWarn() // asynchronously to not delay server startup

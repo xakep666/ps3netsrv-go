@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
+	"github.com/alecthomas/kong"
 	"github.com/xakep666/ps3netsrv-go/internal/osutil/systemlog"
 )
 
@@ -18,7 +19,7 @@ const serviceName = "ps3netsrv-go"
 
 type statusCmd struct{}
 
-func (*statusCmd) Run(s *mgr.Service) error {
+func (*statusCmd) Run(k *kong.Kong, s *mgr.Service) error {
 	st, err := s.Query()
 	if err != nil {
 		return err
@@ -42,17 +43,17 @@ func (*statusCmd) Run(s *mgr.Service) error {
 		state = "stop pending"
 	}
 
-	_, err = fmt.Println("Service state:", state)
+	_, err = fmt.Fprintln(k.Stdout, "Service state:", state)
 	if err != nil {
 		return err
 	}
 
 	if st.State == svc.Stopped {
 		if st.Win32ExitCode != 0 {
-			_, err = fmt.Println("Win32 exit code:", int(st.Win32ExitCode))
+			_, err = fmt.Fprintln(k.Stdout, "Win32 exit code:", int(st.Win32ExitCode))
 		}
 		if st.ServiceSpecificExitCode != 0 {
-			_, err = fmt.Println("Specific exit code:", int(st.ServiceSpecificExitCode))
+			_, err = fmt.Fprintln(k.Stdout, "Specific exit code:", int(st.ServiceSpecificExitCode))
 		}
 	}
 
