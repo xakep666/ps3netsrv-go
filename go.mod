@@ -43,3 +43,5 @@ require (
 )
 
 tool golang.org/x/tools/cmd/stringer
+
+replace github.com/ebitengine/purego => github.com/xakep666/purego v0.0.0-20260801201706-cf6417d9842f // patch for arm softfloat support
