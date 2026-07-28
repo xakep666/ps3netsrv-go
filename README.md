@@ -18,6 +18,7 @@ will run without any external library on target system.
 * [Compressed images](#compressed-images) - save your disk space without filesystem-level compression.
 * [Socket activation](#socket-activation) - run service on-demand, only when client (console) connects.
 * Natively runs as [Windows Service](#windows)
+* Built-in protocol client. See `client` subcommand.
 
 ### Supported ✅
 
@@ -33,7 +34,7 @@ will run without any external library on target system.
 ### Unsupported ❌
 
 * Multipart files `*.666xx`
-* PS2 Games, more tests/debugging needed https://github.com/xakep666/ps3netsrv-go/issues/31
+* Virtual linked directories (`.ini` file with path instead of directory). IMHO it's absolutely pointless feature. On *nix systems symlinks or bind-mounts can be used. On Windows [symlinks](https://learn.microsoft.com/en-us/windows/win32/fileio/creating-symbolic-links) and [junctions](https://learn.microsoft.com/en-us/windows/win32/fileio/hard-links-and-junctions) can do the same thing.
 
 ## Compressed images
 `ps3netsrv-go` supports compressed images to help save disk space. Currently following formats are supported:
@@ -121,8 +122,9 @@ For example how to run under systemd see [Systemd service](#systemd-service) or 
 This project shipped in a multiple ways for convenient installation:
 * Docker images: [`docker pull ghcr.io/xakep666/ps3netsrv-go`](https://ghcr.io/xakep666/ps3netsrv-go). `amd64` and `arm64` images are available.
 * Linux packages: deb, rpm and archlinux. See [Releases](https://github.com/xakep666/ps3netsrv-go/releases). 
-If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go.service).
+If your distro is based on other package manager you may want to use a simple binary and a [systemd unit](./package/linux/ps3netsrv-go@.service).
 * Archived binaries are also available in Releases.
+* AOSC OS [package](https://packages.aosc.io/packages/ps3netsrv-go) maintained by @okamikidfc
 * QNAP NAS packages (qpkg) are available at [@Hirador's repo](https://github.com/Hirador/ps3netsrv-go/releases)
 
 ### libchdr
