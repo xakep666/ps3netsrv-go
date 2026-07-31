@@ -138,8 +138,7 @@ func (l *LibCHDR) readMeatadata(handle fileHandle) ([]CDMetadata, error) {
 			return nil, fmt.Errorf("idx %d: %w", idx, err)
 		}
 
-		tag := rawTag[:rawTagLen-1] // trim \0
-		item, err := ParseCDMetadata(tag)
+		item, err := ParseCDMetadata(rawTag[:rawTagLen])
 		if err != nil {
 			return nil, fmt.Errorf("idx %d: %w", idx, err)
 		}
