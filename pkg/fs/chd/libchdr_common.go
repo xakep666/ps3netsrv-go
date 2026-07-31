@@ -55,12 +55,17 @@ const (
 type FileHeader struct {
 	_ structs.HostLayout
 
-	Length       uint32 // of header in file
-	Version      uint32
-	Flags        uint32
-	Compression  [4]CompressionCodec
-	HunkBytes    uint32 // this is how much you should allocate for reading
-	TotalHunks   uint32 // this is used to limit amount of reads
+	Length      uint32 // of header in file
+	Version     uint32
+	Flags       uint32
+	Compression [4]CompressionCodec
+	HunkBytes   uint32 // this is how much you should allocate for reading
+	TotalHunks  uint32 // this is used to limit amount of reads
+	// C ABI alignment padding: C's uint64_t is 8-byte aligned (e.g. ARM AAPCS),
+	// so the C struct pads here; Go aligns uint64 to only 4 bytes on 32-bit, so
+	// without this every field from LogicalBytes on is misread on 32-bit (ARMv5).
+	// No-op on 64-bit (LogicalBytes is already at this offset there).
+	_            uint32
 	LogicalBytes uint64 // uncompressed size of source file
 	MetaOffset   uint64
 	MapOffset    uint64
@@ -140,11 +145,17 @@ type CDMetadata struct {
 }
 
 func ParseCDMetadata(tag []byte) (CDMetadata, error) {
+	// libchdr returns the metadata as a NUL-terminated C string and the
+	// reported length includes the terminator (and possible padding), so the
+	// last field otherwise ends up like "0\x00" and numeric parses fail.
+	tag = bytes.Trim(tag, "\x00 ")
+
 	var item CDMetadata
 	for len(tag) > 0 {
 		var rawItem []byte
 		rawItem, tag, _ = bytes.Cut(tag, []byte(" "))
 		key, value, _ := bytes.Cut(rawItem, []byte(":"))
+		value = bytes.Trim(value, "\x00 ")
 
 		switch string(key) {
 		case "TRACK":
