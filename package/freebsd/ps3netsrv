@@ -1,0 +1,51 @@
+#!/bin/sh
+
+# PROVIDE: ps3netsrv
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="ps3netsrv"
+rcvar=ps3netsrv_enable
+
+load_rc_config $name
+
+: ${ps3netsrv_enable:="YES"}
+: ${ps3netsrv_user:="ps3"}
+: ${ps3netsrv_group:="ps3"}
+: ${ps3netsrv_config:="/usr/local/ps3netsrv/config.ini"}
+: ${ps3netsrv_pid_dir:="/var/run/ps3netsrv"}
+
+pidfile="${ps3netsrv_pid_dir}/${name}.pid"
+procname="/usr/local/bin/ps3netsrv-go"
+command="/usr/local/bin/ps3netsrv-go"
+command_args="server --config ${ps3netsrv_config}"
+
+# Use the rc framework's built-in daemon support
+start_precmd="${name}_prestart"
+ps3netsrv_prestart()
+{
+    if [ ! -d "${ps3netsrv_pid_dir}" ]; then
+        install -d -m 755 "${ps3netsrv_pid_dir}"
+    fi
+}
+
+# Override start to use daemon
+start_cmd="${name}_start"
+ps3netsrv_start()
+{
+    /usr/sbin/daemon -f -p ${pidfile} -u ${ps3netsrv_user} ${command} ${command_args}
+}
+
+# Override stop to use kill from pidfile
+stop_cmd="${name}_stop"
+ps3netsrv_stop()
+{
+    if [ -f "${pidfile}" ]; then
+        kill -TERM $(cat ${pidfile})
+        rm -f ${pidfile}
+    fi
+}
+
+run_rc_command "$1"
