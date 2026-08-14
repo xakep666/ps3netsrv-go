@@ -249,6 +249,25 @@ Auto-start is disabled by default for security reasons. However it could be enab
 
 There are some other subcommands in `svc` to control service, check out `--help` for detailed usage.
 
+### FreeBSD
+
+Nothing special is needed for the project to run on FreeBSD.
+1. [Build an executable](#building)
+2. Copy `ps3netsrv-go` executable to `/usr/local/bin`
+3. Install libchdr
+4. (optional) Add an rc script
+```bash
+cp <project-root>/package/freebsd/ps3netsrv /usr/local/etc/rc.d/
+mkdir -vp /var/run/ps3netsrv
+mkdir -vp /usr/local/ps3netsrv
+cp <project-root>/package/freebsd/config.ini /usr/local/ps3netsrv/
+sysrc ps3netsrv_enable=YES
+```
+5. (optional) Add a special user for the rc script
+```bash
+pw useradd ps3 -m -s /usr/sbin/nologin -c "ps3netsrv user" -u 361
+```
+
 ## Performance tips
 * Connect your console to the network using ethernet cable. To achieve maximum performance server and console
 should be connected with 1Gbps network.
