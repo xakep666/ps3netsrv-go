@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/compress v1.19.1
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-colorable v0.1.15
-	github.com/mattn/go-isatty v0.0.23
+	github.com/mattn/go-isatty v0.0.24
 	github.com/mocheryl/slog-syslog v0.1.2
 	github.com/pierrec/lz4/v4 v4.1.27
 	github.com/stretchr/testify v1.11.1
