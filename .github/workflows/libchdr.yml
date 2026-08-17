@@ -42,6 +42,7 @@ jobs:
               name: aarch64
             os:
               name: windows
+    name: Build libchdr on ${{ matrix.os.name }}/${{ matrix.arch.name }}
     runs-on: ubuntu-latest
     env:
       ZIGCC_FLAGS: '--target=${{ matrix.arch.name }}-${{ matrix.os.name }}-${{ matrix.os.libc }}'
