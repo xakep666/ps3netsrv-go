@@ -8,7 +8,7 @@ require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/djherbis/times v1.6.0
 	github.com/docker/go-units v0.5.0
-	github.com/ebitengine/purego v0.10.2
+	github.com/ebitengine/purego v0.11.0
 	github.com/klauspost/compress v1.19.2
 	github.com/lmittmann/tint v1.2.0
 	github.com/mattn/go-colorable v0.1.15
