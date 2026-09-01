@@ -139,7 +139,11 @@ func (c *chdDecompressCmd) Run(k *kong.Kong) error {
 
 	if !f.Header.IsCDCodesOnly() || c.RawCdSectors {
 		bar := p.New(int64(f.Header.LogicalBytes), builder, opts...)
-		_, err = io.Copy(c.Output, bar.ProxyReader(f))
+		pr, err := bar.ProxyReader(f)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(c.Output, pr)
 		if err != nil {
 			return err
 		}
@@ -154,7 +158,11 @@ func (c *chdDecompressCmd) Run(k *kong.Kong) error {
 
 	fmt.Fprintf(k.Stderr, "Decompressing CHD CD image %s: %d sectors %d bytes each ...\n", c.Image.Name(), cdFile.SectorsCount, cdFile.SectorDataSize)
 	bar := p.New(cdFile.Size, builder, opts...)
-	_, err = io.Copy(c.Output, bar.ProxyReader(cdFile))
+	pr, err := bar.ProxyReader(cdFile)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(c.Output, pr)
 	if err != nil {
 		return err
 	}

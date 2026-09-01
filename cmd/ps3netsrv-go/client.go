@@ -227,7 +227,10 @@ func (c *clientReadCmd) Run(ctx context.Context, k *kong.Kong, client *client.Cl
 	)
 
 	fmt.Fprintf(k.Stderr, "Reading file %q from server\n", c.Path)
-	target := bar.ProxyWriter(targetFile)
+	target, err := bar.ProxyWriter(targetFile)
+	if err != nil {
+		return err
+	}
 	for count > 0 {
 		readBytes := min(int64(c.BlockSize), count)
 		if c.NonCritical {
@@ -297,7 +300,10 @@ func (c *clientReadCd2048Cmd) Run(ctx context.Context, k *kong.Kong, client *cli
 		),
 	)
 
-	target := bar.ProxyWriter(targetFile)
+	target, err := bar.ProxyWriter(targetFile)
+	if err != nil {
+		return err
+	}
 	fmt.Fprintf(k.Stderr, "Reading file %q from server in cd-2048 mode\n", c.Path)
 	for count > 0 {
 		err := client.ReadCD2048Critical(ctx, c.BlockSize, offset, target)
@@ -365,7 +371,11 @@ func (c *clientWriteCmd) Run(ctx context.Context, k *kong.Kong, client *client.C
 	)
 
 	fmt.Fprintf(k.Stderr, "Sending file %q\n", c.Source.Name())
-	err = client.WriteFile(ctx, c.BlockSize, bar.ProxyReader(io.LimitReader(c.Source, count)))
+	pr, err := bar.ProxyReader(io.LimitReader(c.Source, count))
+	if err != nil {
+		return err
+	}
+	err = client.WriteFile(ctx, c.BlockSize, pr)
 	if err != nil {
 		return err
 	}

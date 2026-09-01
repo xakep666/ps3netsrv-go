@@ -78,7 +78,12 @@ func (c *csoDecompressCmd) Run(k *kong.Kong) error {
 	}
 
 	bar := p.New(int64(f.Header.UncompressedSize), builder, opts...)
-	_, err = io.Copy(c.Output, bar.ProxyReader(f))
+	pr, err := bar.ProxyReader(f)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(c.Output, pr)
 	if err != nil {
 		return err
 	}
