@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/KimMachineGun/automemlimit v0.7.5
 	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0
-	github.com/alecthomas/kong v1.16.0
+	github.com/alecthomas/kong v1.16.1
 	github.com/djherbis/times v1.6.0
 	github.com/docker/go-units v0.5.0
 	github.com/ebitengine/purego v0.10.2
