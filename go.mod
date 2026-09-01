@@ -14,7 +14,7 @@ require (
 	github.com/mattn/go-colorable v0.1.15
 	github.com/mattn/go-isatty v0.0.24
 	github.com/mocheryl/slog-syslog v0.1.2
-	github.com/pierrec/lz4/v4 v4.1.28
+	github.com/pierrec/lz4/v4 v4.1.29
 	github.com/stretchr/testify v1.11.1
 	github.com/systemd/slog-journal v0.1.2
 	github.com/vbauerster/mpb/v8 v8.15.1
