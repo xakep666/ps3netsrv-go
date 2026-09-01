@@ -52,7 +52,12 @@ func (c *decrypt3k3yCmd) Run(k *kong.Kong) error {
 		),
 	)
 
-	_, err = io.Copy(c.Output, bar.ProxyReader(imageWrapped))
+	pr, err := bar.ProxyReader(imageWrapped)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(c.Output, pr)
 	if err != nil {
 		return err
 	}
@@ -97,7 +102,11 @@ func (c *decryptRedumpCmd) Run(k *kong.Kong) error {
 		),
 	)
 
-	_, err = io.Copy(c.Output, bar.ProxyReader(imageWrapped))
+	pr, err := bar.ProxyReader(imageWrapped)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(c.Output, pr)
 	if err != nil {
 		return err
 	}

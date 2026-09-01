@@ -48,7 +48,12 @@ func (a *makeISOApp) Run(ctx context.Context, k *kong.Kong) error {
 		),
 	)
 
-	_, err = io.Copy(a.Target, bar.ProxyReader(viso))
+	pr, err := bar.ProxyReader(viso)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(a.Target, pr)
 	if err != nil {
 		return err
 	}
