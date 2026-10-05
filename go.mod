@@ -3,7 +3,7 @@ module github.com/xakep666/ps3netsrv-go
 go 1.26.3
 
 require (
-	github.com/KimMachineGun/automemlimit v0.7.5
+	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/SaveTheRbtz/zstd-seekable-format-go/pkg v0.10.0
 	github.com/alecthomas/kong v1.16.1
 	github.com/djherbis/times v1.6.0
