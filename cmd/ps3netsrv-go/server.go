@@ -341,7 +341,7 @@ func (sapp *serverApp) setupRuntime() {
 		return
 	}
 
-	_, err := memlimit.SetGoMemLimitWithOpts(memlimit.WithLogger(slog.Default()))
+	_, err := memlimit.Set(memlimit.WithLogger(slog.Default()))
 	switch {
 	case errors.Is(err, nil),
 		errors.Is(err, memlimit.ErrCgroupsNotSupported),
