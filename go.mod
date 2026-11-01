@@ -15,7 +15,7 @@ require (
 	github.com/mattn/go-isatty v0.0.24
 	github.com/mocheryl/slog-syslog v0.1.2
 	github.com/pierrec/lz4/v4 v4.1.30
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.1
 	github.com/systemd/slog-journal v0.1.2
 	github.com/vbauerster/mpb/v8 v8.16.3
 	golang.org/x/net v0.61.0
@@ -30,17 +30,12 @@ require (
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/vbauerster/cupwriter v0.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 tool golang.org/x/tools/cmd/stringer
